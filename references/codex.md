@@ -24,13 +24,13 @@ Read `~/.codex/config.toml` for the user's default model (`model` key) and reaso
 
 ```bash
 # Non-interactive execution
-timeout 300 codex exec "PROMPT" -m <model> -c model_reasoning_effort="<effort>" \
+codex exec "PROMPT" -m <model> -c model_reasoning_effort="<effort>" \
   [SANDBOX_FLAG] --skip-git-repo-check -C <dir> \
   -o /tmp/codex-out.txt 2>/tmp/codex-err.txt
 grep -A4 "^RESULT:" /tmp/codex-out.txt || tail -10 /tmp/codex-out.txt
 
 # Code review
-timeout 300 codex exec review -m <model> --skip-git-repo-check \
+codex exec review -m <model> --skip-git-repo-check \
   > /tmp/codex-out.txt 2>/tmp/codex-err.txt
 
 # Resume most recent session

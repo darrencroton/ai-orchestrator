@@ -78,10 +78,10 @@ After orchestration, summarize each model actually used with:
 
 Treat scores and percentages as rough operating feedback, not objective metrics. Keep the summary short and useful.
 
-## Adding Models
+## Adding / Removing a Model
 
 To add another model or local LLM:
 
-1. Add one row to the model table above.
-2. Add `references/<model>.md` following the structure of the existing model files.
+1. Add [or remove] one row to [from] the model table above.
+2. Add [or delete] `references/<model>.md` following the structure of the existing model files.
 3. Only change [references/templates.md](references/templates.md) if the new model requires a new role, prompt shape, or output-extraction pattern.

@@ -26,12 +26,12 @@ All Claude Code output should be redirected and extracted from the capture file.
 
 ```bash
 # Non-interactive execution (edit task)
-timeout 300 claude -p "PROMPT" --permission-mode acceptEdits --output-format text --add-dir <dir> \
+claude -p "PROMPT" --permission-mode acceptEdits --output-format text --add-dir <dir> \
   > /tmp/claude-out.txt 2>/tmp/claude-err.txt
 grep -A4 "^RESULT:" /tmp/claude-out.txt || tail -10 /tmp/claude-out.txt
 
 # Read-only review / plan review
-timeout 300 claude -p "PROMPT" --permission-mode plan --output-format text --add-dir <dir> \
+claude -p "PROMPT" --permission-mode plan --output-format text --add-dir <dir> \
   > /tmp/claude-out.txt 2>/tmp/claude-err.txt
 grep -A4 "^RESULT:" /tmp/claude-out.txt || tail -10 /tmp/claude-out.txt
 

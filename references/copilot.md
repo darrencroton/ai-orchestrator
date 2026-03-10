@@ -29,18 +29,18 @@ Prefer `--silent` for captured non-interactive runs. Always redirect and extract
 
 ```bash
 # Non-interactive execution
-timeout 300 copilot -p "PROMPT" --allow-all-tools --autopilot --silent --add-dir <dir> \
+copilot -p "PROMPT" --allow-all-tools --autopilot --silent --add-dir <dir> \
   > /tmp/copilot-out.txt 2>/tmp/copilot-err.txt
 grep -A4 "^RESULT:" /tmp/copilot-out.txt || tail -10 /tmp/copilot-out.txt
 
 # Low-stakes web research
-timeout 300 copilot -p "PROMPT" --allow-all-tools --allow-all-urls --autopilot --silent --add-dir <dir> \
+copilot -p "PROMPT" --allow-all-tools --allow-all-urls --autopilot --silent --add-dir <dir> \
   > /tmp/copilot-out.txt 2>/tmp/copilot-err.txt
 # Extract ## Findings only
 sed -n '/^## [Ff]indings/,$p' /tmp/copilot-out.txt | sed '/^<task_complete>/q'
 
 # GitHub operations (with MCP tools)
-timeout 300 copilot -p "PROMPT" --allow-all-tools --add-github-mcp-toolset all --autopilot --silent --add-dir <dir> \
+copilot -p "PROMPT" --allow-all-tools --add-github-mcp-toolset all --autopilot --silent --add-dir <dir> \
   > /tmp/copilot-out.txt 2>/tmp/copilot-err.txt
 grep -A4 "^RESULT:" /tmp/copilot-out.txt || tail -10 /tmp/copilot-out.txt
 
