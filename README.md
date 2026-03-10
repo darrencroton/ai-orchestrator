@@ -43,8 +43,8 @@ Trigger conditions:
 | **Senior worker** | Deep technical work: multi-file edits, refactors, complex logic, plan review | No re-delegation |
 | **Junior worker** | Tactical work: surgical edits, approved git ops, low-stakes research | Escalate when scope or importance grows |
 
-## Adding a Model
+## Adding (Removing) a Model
 
-1. Add one row to the model table in `SKILL.md`
-2. Add `references/<model>.md` following the structure of the existing model files
+1. Add a new row to the model table in `SKILL.md` (or remove the relevant row)
+2. Add `references/<model>.md` following the structure of the existing model files (or remove the relevant file)
 3. Only update `references/templates.md` if the new model requires a new role, prompt shape, or output-extraction pattern

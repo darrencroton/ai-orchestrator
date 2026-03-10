@@ -79,11 +79,3 @@ After orchestration, summarize each model actually used with:
 - An estimated percentage of total work
 
 Treat scores and percentages as rough operating feedback, not objective metrics. Keep the summary short and useful.
-
-## Adding / Removing a Model
-
-To add another model or local LLM:
-
-1. Add [or remove] one row to [from] the model table above.
-2. Add [or delete] `references/<model>.md` following the structure of the existing model files.
-3. Only change [references/templates.md](references/templates.md) if the new model requires a new role, prompt shape, or output-extraction pattern.
