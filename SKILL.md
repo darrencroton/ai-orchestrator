@@ -7,7 +7,7 @@ description: Routes coding and analysis tasks to external AI CLI tools (e.g. Cla
 
 Only the assistant directly handling the user's request may act as the orchestrator and use this skill for delegation. Delegated workers are never orchestrators. If the current assistant is not marked as orchestrator-capable in the model table below, it must not orchestrate with this skill.
 
-The orchestrator owns context, planning, delegation, verification, testing, and final responsibility. It should push the bulk of eligible work to workers and spend its own tokens on plan quality, context packaging, verification, testing, and synthesis. Keep work local only when delegation would materially weaken correctness, lose critical context, or slow verification enough to outweigh the token savings.
+The orchestrator owns context, planning, delegation, verification, testing, and final responsibility. It should push the bulk of eligible work to workers and spend its own tokens on plan quality, context packaging, verification, testing, and synthesis. Keep work local only when delegation would materially weaken correctness, lose critical context, slow verification enough to outweigh the token savings, or when prompt construction cost exceeds the task cost itself.
 
 ## Roles
 
@@ -57,6 +57,8 @@ Every prompt sent to an external tool must be self-contained. Always use the rol
 Every delegated prompt must also place the receiver in worker mode: it is not the orchestrator, it must not invoke `ai-orchestrator`, and it must not re-delegate to another model. If blocked, it should report the blocker instead of bouncing the task onward.
 
 ## Workflow
+
+Each new task requires a fresh role selection decision — do not carry forward a prior delegation choice.
 
 1. **Preflight** — confirm the chosen CLI is installed, authenticated if needed, and allowed by user approval constraints
 2. **Plan** — determine what needs doing and which role owns each piece
