@@ -3,7 +3,7 @@
 Use these templates to define the work by role. Fill in all fields. Remove placeholder text. Include only task-relevant context, but include enough that the worker does not need unstated background.
 
 Templates define prompt shape only. To run a template, choose a model from [SKILL.md](../SKILL.md), then use that model's reference file for the actual CLI invocation.
-Use scanner-safe `SECTION: NAME` markers instead of Markdown headings that begin with `#`. For analysis or investigation, require `path:line` citations for every material claim. Keep outputs concise; prefer bullets and short tables over long prose dumps.
+Use scanner-safe `SECTION: NAME` markers in prompts. The helper extractor matches `SECTION:` header lines by pattern, so minor Markdown formatting differences in model output do not matter. For analysis or investigation, require `path:line` citations for every material claim. Keep outputs concise; prefer bullets and short tables over long prose dumps.
 
 ## Role Ranges
 
@@ -18,11 +18,10 @@ Extract: `grep -A4 "^RESULT:" /tmp/<tool>-out.txt || tail -10 /tmp/<tool>-out.tx
 
 **Information tasks** (find, analyse, research):
 Use structured section markers in the prompt (e.g. `SECTION: FINDINGS`, `SECTION: RISKS`).
-Default extract: `sed -n '/^SECTION: /,$p' /tmp/<tool>-out.txt`
-If you requested multiple sections, inspect only those markers instead of reading the whole file.
+Default extract: read the whole final outfile. If the output is long, filter on requested `SECTION` blocks.
 
-Both patterns always capture output to a unique per-worker file such as `/tmp/<tool>-<task>-out.txt`. Use redirection or a tool-specific output flag as appropriate.
-Inspect only the requested `RESULT:` block or `SECTION:` markers, not the raw transcript or process logs.
+For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs.py) so each run gets its own tracked artifacts and extraction flow.
+Inspect stderr only when the final outfile is missing, empty, or clearly malformed.
 
 ## Worker Mode
 

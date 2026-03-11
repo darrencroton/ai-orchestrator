@@ -19,6 +19,8 @@ The orchestrator delegates the bulk of eligible work to worker models, spending 
 ```
 SKILL.md                  # Main skill definition, roles, workflow, model table
 ai-reminder               # tmux reminder helper for Codex/Claude sessions
+scripts/
+  worker_jobs.py          # tracked multi-worker launcher/status/extract helper
 references/
   claude.md               # Claude Code CLI reference and commands
   codex.md                # Codex CLI reference and commands
@@ -33,7 +35,8 @@ This skill is loaded by an AI coding assistant that supports skill files (e.g. C
 Operating conventions:
 - Use self-contained worker prompts with absolute paths when practical
 - For analysis tasks, ask workers to return `SECTION:` markers plus `path:line` evidence
-- Use unique per-worker capture files; supervise background workers in the same shell when possible, otherwise use `ps -p` or `kill -0` for liveness and only read outputs after exit
+- For multi-worker runs, prefer `scripts/worker_jobs.py` over ad hoc `/tmp` filenames and shell-local pid variables
+- Read each worker's final outfile by default when it is short; inspect stderr only for failures or missing output
 - Keep working while workers run: do narrow local cross-checks or synthesis prep instead of idling
 
 Trigger conditions:

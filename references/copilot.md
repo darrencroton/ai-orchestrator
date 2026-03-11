@@ -36,8 +36,7 @@ grep -A4 "^RESULT:" /tmp/copilot-out.txt || tail -10 /tmp/copilot-out.txt
 # Low-stakes web research
 copilot -p "PROMPT" --allow-all-tools --allow-all-urls --autopilot --silent --add-dir <dir> \
   > /tmp/copilot-out.txt 2>/tmp/copilot-err.txt
-# Extract SECTION: FINDINGS only
-sed -n '/^SECTION: FINDINGS/,$p' /tmp/copilot-out.txt
+cat /tmp/copilot-out.txt
 
 # GitHub operations (with MCP tools)
 copilot -p "PROMPT" --allow-all-tools --add-github-mcp-toolset all --autopilot --silent --add-dir <dir> \
@@ -49,6 +48,7 @@ copilot --continue --allow-all-tools
 ```
 
 If extraction returns nothing, check `/tmp/copilot-err.txt` before retrying.
+For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs.py). Let it own stdout/stderr capture, and use its extraction step rather than adding brittle post-processing. It matches `SECTION:` header lines by pattern instead of relying on one exact formatting variant.
 
 ## Key Flags
 

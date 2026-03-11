@@ -27,7 +27,7 @@ Read `~/.codex/config.toml` for the user's default model (`model` key) and reaso
 codex exec "PROMPT" [-m <model>] -c model_reasoning_effort="<effort>" \
   [SANDBOX_FLAG] --skip-git-repo-check -C <dir> \
   -o /tmp/codex-out.txt 2>/tmp/codex-err.txt
-grep -A4 "^RESULT:" /tmp/codex-out.txt || sed -n '/^SECTION: /,$p' /tmp/codex-out.txt
+cat /tmp/codex-out.txt
 
 # Code review
 codex exec review -m <model> --skip-git-repo-check \
@@ -42,32 +42,24 @@ codex exec resume --last --skip-git-repo-check \
 `2>/tmp/codex-err.txt` — separates stderr so thinking-token noise doesn't pollute extraction; check this file if extraction returns nothing.
 `--skip-git-repo-check` — always include; allows running outside a git repo.
 
-For parallel workers, use unique filenames and keep launch plus wait in the same shell when possible:
+For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs.py). When using the helper, let it own stdout/stderr capture and omit `-o` plus shell redirections from the worker command:
 
 ```bash
-codex exec "PROMPT_A" -c model_reasoning_effort="medium" -s read-only --skip-git-repo-check \
-  -C <dir> -o /tmp/codex-a-out.txt 2>/tmp/codex-a-err.txt &
-pid_a=$!
-
-codex exec "PROMPT_B" -c model_reasoning_effort="medium" -s read-only --skip-git-repo-check \
-  -C <dir> -o /tmp/codex-b-out.txt 2>/tmp/codex-b-err.txt &
-pid_b=$!
-
-while kill -0 "$pid_a" 2>/dev/null || kill -0 "$pid_b" 2>/dev/null; do
-  sleep 5
-done
-
-wait "$pid_a"; rc_a=$?
-wait "$pid_b"; rc_b=$?
+run_dir=$(python3 <skill-dir>/scripts/worker_jobs.py init)
+python3 <skill-dir>/scripts/worker_jobs.py start --run-dir "$run_dir" --label codex-a -- \
+  codex exec "PROMPT_A" -c model_reasoning_effort="medium" -s read-only --skip-git-repo-check -C <dir>
+python3 <skill-dir>/scripts/worker_jobs.py start --run-dir "$run_dir" --label codex-b -- \
+  codex exec "PROMPT_B" -c model_reasoning_effort="medium" -s read-only --skip-git-repo-check -C <dir>
+python3 <skill-dir>/scripts/worker_jobs.py wait --run-dir "$run_dir"
+python3 <skill-dir>/scripts/worker_jobs.py extract --run-dir "$run_dir" --label codex-a
 ```
 
 Notes:
 
 - `-o` writes the final agent message when the run exits. The output file may not exist while the worker is still running.
 - Do not infer failure from a missing output file before the worker exits.
-- `wait` only works when the worker was started by the same shell process. If your tool opens a fresh shell per command, use `ps -p <pid>` or `kill -0 <pid>` for later liveness checks instead of `wait`.
-- If a worker exits non-zero or produces no usable output, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
-- While workers run, keep moving on targeted local verification or synthesis prep instead of idle polling.
+- Read the whole final outfile by default when it is short; use `worker_jobs.py extract --sections ...` only for long structured outputs.
+- If a worker exits non-zero or produces no usable outfile, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
 - Prefer foreground execution unless there is a clear parallel split worth the supervision cost.
 
 ## Key Flags

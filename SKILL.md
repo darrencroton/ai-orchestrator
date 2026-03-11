@@ -9,6 +9,8 @@ Only the assistant directly handling the user's request may act as the orchestra
 
 The orchestrator owns context, planning, delegation, verification, testing, and final responsibility. It should push the bulk of eligible work to workers and spend its own tokens on plan quality, context packaging, verification, testing, and synthesis. Keep work local only when delegation would materially weaken correctness, lose critical context, slow verification enough to outweigh the token savings, or when prompt construction cost exceeds the task cost itself.
 
+For multi-worker runs, prefer [scripts/worker_jobs.py](scripts/worker_jobs.py) to create a unique run directory, track worker artifacts, wait safely, and extract outputs. Use raw shell-only orchestration only for simple one-worker cases.
+
 ## Roles
 
 | Role | Purpose | Typical tasks | Hard limits |
@@ -70,9 +72,9 @@ Each new task requires a fresh role selection decision — do not carry forward 
 3. **Select role and model** — use the role matrix, model table, and any user directive
 4. **Load references** — read [references/templates.md](references/templates.md) and the selected model reference
 5. **Fill template** — include all context; the worker knows nothing else
-6. **Run** — invoke the model using its reference file, with unique per-worker output files; background workers only when there is a clear parallel split; supervise them in the same shell when possible
+6. **Run** — invoke the model using its reference file; for multi-worker runs, prefer [scripts/worker_jobs.py](scripts/worker_jobs.py) so outputs live under one run directory with a manifest
 7. **Keep moving** — while workers run, do narrow local cross-checking, read key files, draft the synthesis skeleton, or prepare a critique prompt; avoid idling, but do not blindly duplicate the full worker task
-8. **Check** — review only the extracted `RESULT:` block or requested `SECTION:` blocks; if the environment uses a fresh shell for each command, do not use `wait` in a later shell; use liveness checks instead, inspect stderr after process exit, do at most one targeted retry, and then fall back
+8. **Check** — read each worker's final outfile by default when it is short; use section filtering only for long structured outputs; inspect stderr only when the outfile is missing, empty, or clearly malformed; never reuse a differently named old file from another run
 9. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
 
 For tasks that ask to verify a plan or workplan, return a compact step matrix:
