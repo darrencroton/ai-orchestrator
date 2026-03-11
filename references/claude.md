@@ -40,7 +40,7 @@ claude --continue
 ```
 
 If extraction returns nothing, check `/tmp/claude-err.txt` before retrying.
-For parallel workers, use unique filenames and wait on each worker pid instead of polling for output-file creation.
+For parallel workers, use unique filenames and keep launch plus wait in the same shell when possible. If the environment opens a fresh shell per command, use `ps -p <pid>` or `kill -0 <pid>` for later liveness checks instead of `wait`, and only inspect outputs after exit.
 
 ## Key Flags
 

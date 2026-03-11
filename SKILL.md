@@ -51,27 +51,29 @@ After choosing a role, choose a model from the table above:
 2. The orchestrator is the current assistant, but only if that model is marked orchestrator-capable.
 3. For worker roles, prefer a non-orchestrator model that is marked suitable for the role and best matches the task.
 4. For planning or architecture tasks, prefer one senior worker to map the code and another senior worker to critique the synthesized plan when multiple senior tools are available.
-5. If no suitable worker is available, keep the task with the orchestrator rather than forcing delegation.
+5. For workplan verification, use parallel code-mapping workers only when the codebase splits cleanly. Otherwise prefer one senior investigation and keep the second senior worker for plan review after a first synthesis draft.
+6. If no suitable worker is available, keep the task with the orchestrator rather than forcing delegation.
 
 ## Delegation Discipline
 
 Every prompt sent to an external tool must be self-contained. Always use the role templates in [references/templates.md](references/templates.md) — do not improvise. They exist to package the right context so delegation can be the default for eligible work. Include: specific task, relevant code or file paths, constraints, approval state for any state-changing git/GitHub action, and expected output format.
 
 Every delegated prompt must also place the receiver in worker mode: it is not the orchestrator, it must not invoke `ai-orchestrator`, and it must not re-delegate to another model. If blocked, it should report the blocker instead of bouncing the task onward.
-Use absolute file paths when practical. For analysis and investigation prompts, require `path:line` evidence for every material claim. Inside shell-quoted prompts, use `SECTION: NAME` markers rather than Markdown headings that start with `#`.
+Use absolute file paths when practical. For analysis and investigation prompts, require `path:line` evidence for every material claim. Inside shell-quoted prompts, use `SECTION: NAME` markers rather than Markdown headings that start with `#`. Keep worker outputs compact and high-signal.
 
 ## Workflow
 
 Each new task requires a fresh role selection decision — do not carry forward a prior delegation choice.
 
-1. **Preflight** — confirm the chosen CLI is installed, authenticated if needed, and allowed by user approval constraints; load user config defaults when the model reference requires it
+1. **Preflight** — confirm the chosen CLI is installed, authenticated if needed, and allowed by user approval constraints; load user config defaults as a starting point when the model reference requires it
 2. **Plan** — determine what needs doing and which role owns each piece
 3. **Select role and model** — use the role matrix, model table, and any user directive
 4. **Load references** — read [references/templates.md](references/templates.md) and the selected model reference
 5. **Fill template** — include all context; the worker knows nothing else
-6. **Run** — invoke the model using its reference file, with unique per-worker output files; background workers only when there is a clear parallel split; track PIDs and use a bounded wait when possible
-7. **Check** — review only the extracted `RESULT:` block or requested `SECTION:` blocks; if output is missing after process exit, inspect stderr, do at most one targeted retry, and then fall back
-8. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
+6. **Run** — invoke the model using its reference file, with unique per-worker output files; background workers only when there is a clear parallel split; supervise them in the same shell when possible
+7. **Keep moving** — while workers run, do narrow local cross-checking, read key files, draft the synthesis skeleton, or prepare a critique prompt; avoid idling, but do not blindly duplicate the full worker task
+8. **Check** — review only the extracted `RESULT:` block or requested `SECTION:` blocks; if the environment uses a fresh shell for each command, do not use `wait` in a later shell; use liveness checks instead, inspect stderr after process exit, do at most one targeted retry, and then fall back
+9. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
 
 For tasks that ask to verify a plan or workplan, return a compact step matrix:
 
@@ -79,6 +81,17 @@ For tasks that ask to verify a plan or workplan, return a compact step matrix:
 - Evidence (`path:line`)
 - Confidence
 - Blocker or divergence
+
+End with:
+
+- Recommended next actions
+- Non-blocking gaps or follow-up debt
+
+Before replying:
+
+- Remove duplicated sections
+- If a cheap missing file would materially change confidence, inspect it locally or with one targeted read-only follow-up before finalizing
+- Do not mark a step `High` confidence when the blocker says more files or code paths are still needed for full verification
 
 ## Orchestrator Summary
 
