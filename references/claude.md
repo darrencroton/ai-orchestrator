@@ -56,7 +56,6 @@ Notes:
 |---|---|
 | `-p / --print` | Non-interactive prompt string |
 | `--model` | Any valid model string; omit to use the CLI default |
-| `--effort` | Reasoning effort for the session: `low`, `medium`, `high` |
 | `--permission-mode` | Use `acceptEdits` for edit tasks, `plan` for read-only review |
 | `--output-format` | `text`, `json`, `stream-json` |
 | `--add-dir` | Additional directory to permit tool access to |

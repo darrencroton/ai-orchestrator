@@ -19,7 +19,7 @@
 
 ## Config Discovery
 
-Read `~/.codex/config.toml` for the user's default model (`model` key) and reasoning effort (`model_reasoning_effort` key). Use those defaults as a starting point unless the user specifies otherwise. Prefer omitting `-m` entirely when the configured default is acceptable. Never hardcode model names.
+Read `~/.codex/config.toml` for the user's default model (`model` key). Use that model as a starting point unless the user specifies otherwise. Prefer `model_reasoning_effort="high"` for Codex worker tasks, and reserve `xhigh` for especially complex review or synthesis. Prefer omitting `-m` entirely when the configured default is acceptable. Never hardcode model names.
 
 ## Core Commands
 
@@ -48,9 +48,9 @@ For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs
 ```bash
 run_dir=$(python3 <skill-dir>/scripts/worker_jobs.py init)
 python3 <skill-dir>/scripts/worker_jobs.py start --run-dir "$run_dir" --label codex-a -- \
-  codex exec "PROMPT_A" -c model_reasoning_effort="medium" -s read-only --skip-git-repo-check -C <dir>
+  codex exec "PROMPT_A" -c model_reasoning_effort="high" -s read-only --skip-git-repo-check -C <dir>
 python3 <skill-dir>/scripts/worker_jobs.py start --run-dir "$run_dir" --label codex-b -- \
-  codex exec "PROMPT_B" -c model_reasoning_effort="medium" -s read-only --skip-git-repo-check -C <dir>
+  codex exec "PROMPT_B" -c model_reasoning_effort="high" -s read-only --skip-git-repo-check -C <dir>
 python3 <skill-dir>/scripts/worker_jobs.py wait --run-dir "$run_dir"
 python3 <skill-dir>/scripts/worker_jobs.py extract --run-dir "$run_dir" --label codex-a
 ```
@@ -70,7 +70,7 @@ Notes:
 | Flag | Values | Notes |
 |---|---|---|
 | `-m / --model` | any string | From config or user request; omit when the default is acceptable |
-| `-c model_reasoning_effort="VALUE"` | string | From config; override by task when needed |
+| `-c model_reasoning_effort="VALUE"` | string | Prefer `high`; use `xhigh` only for especially complex work or explicit user preference |
 | `-s / --sandbox` | `read-only`, `workspace-write`, `danger-full-access` | See Permission Guidance |
 | `--full-auto` | — | Alias for `-a on-request --sandbox workspace-write` |
 | `-C / --cd` | path | Set working directory |
@@ -86,8 +86,8 @@ Notes:
 
 Reasoning guidance:
 
-- Mapping, investigation, and first-pass edits: prefer a medium supported setting even if the global default is higher
-- Ambiguity, critique, or complex synthesis: use a higher supported setting only when it buys better results
+- Default to `high` for Codex worker tasks
+- Escalate to `xhigh` only for especially complex review, ambiguity, or synthesis
 
 ## Resume
 
