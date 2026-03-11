@@ -15,6 +15,7 @@
 ## Avoid Using It For
 
 - Low-value tactical chores when a junior worker is available
+- Launching Claude Code workers from inside a Claude Code orchestrator session
 
 ## Config Discovery
 
@@ -41,6 +42,13 @@ claude --continue
 
 If extraction returns nothing, check `/tmp/claude-err.txt` before retrying.
 For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and robust extraction. When using the helper, let it own stdout/stderr capture and omit extra shell redirections from the worker command.
+
+Notes:
+
+- Do not launch Claude Code as a worker from inside a Claude Code orchestrator session; nested Claude sessions are blocked.
+- Read the whole final outfile by default when it is short; use `worker_jobs.py extract --sections ...` only for long structured outputs.
+- If a worker exits non-zero or produces no usable outfile, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
+- While workers run, keep the orchestrator on orchestration work only; do not duplicate the delegated investigation locally.
 
 ## Key Flags
 

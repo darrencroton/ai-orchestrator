@@ -33,11 +33,12 @@ references/
 This skill is loaded by an AI coding assistant that supports skill files (e.g. Claude Code). Once loaded, the assistant acts as orchestrator and uses the templates and model references to delegate work.
 
 Operating conventions:
+- Start with a short execution checklist and keep it updated through the run
 - Use self-contained worker prompts with absolute paths when practical
 - For analysis tasks, ask workers to return `SECTION:` markers plus `path:line` evidence
 - For multi-worker runs, prefer `scripts/worker_jobs.py` over ad hoc `/tmp` filenames and shell-local pid variables
 - Read each worker's final outfile by default when it is short; inspect stderr only for failures or missing output
-- Keep working while workers run: do narrow local cross-checks or synthesis prep instead of idling
+- While workers run, stay in the orchestrator role: monitor status, manage the checklist, and prepare synthesis or follow-up review prompts rather than duplicating the delegated investigation
 
 Trigger conditions:
 - The user wants to delegate a task to an external AI agent

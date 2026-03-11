@@ -15,6 +15,7 @@
 ## Avoid Using It For
 
 - Low-value tactical chores when a junior worker is available
+- Launching Codex CLI workers from inside a Codex CLI orchestrator session
 
 ## Config Discovery
 
@@ -56,10 +57,12 @@ python3 <skill-dir>/scripts/worker_jobs.py extract --run-dir "$run_dir" --label 
 
 Notes:
 
+- Do not launch Codex CLI as a worker from inside a Codex CLI orchestrator session; choose another worker model or keep that part local.
 - `-o` writes the final agent message when the run exits. The output file may not exist while the worker is still running.
 - Do not infer failure from a missing output file before the worker exits.
 - Read the whole final outfile by default when it is short; use `worker_jobs.py extract --sections ...` only for long structured outputs.
 - If a worker exits non-zero or produces no usable outfile, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
+- While workers run, keep the orchestrator on orchestration work only; do not duplicate the delegated investigation locally.
 - Prefer foreground execution unless there is a clear parallel split worth the supervision cost.
 
 ## Key Flags

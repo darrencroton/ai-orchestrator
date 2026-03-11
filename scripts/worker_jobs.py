@@ -105,7 +105,10 @@ def worker_status(entry: dict[str, Any]) -> dict[str, Any]:
     errfile = Path(entry["errfile"])
     status_payload = read_json(status_file) if status_file.exists() else {}
     running = process_running(pid)
+    returncode = status_payload.get("returncode")
     state = "running" if running else status_payload.get("state", "finished")
+    if not running and returncode not in (None, 0):
+        state = "failed"
     return {
         "label": entry["label"],
         "pid": pid,
@@ -118,7 +121,7 @@ def worker_status(entry: dict[str, Any]) -> dict[str, Any]:
         "errfile": str(errfile),
         "errfile_exists": errfile.exists(),
         "errfile_size": errfile.stat().st_size if errfile.exists() else 0,
-        "returncode": status_payload.get("returncode"),
+        "returncode": returncode,
         "started_at": entry.get("started_at"),
         "finished_at": status_payload.get("finished_at"),
         "command": entry.get("command", []),
@@ -257,9 +260,12 @@ def command_status(args: argparse.Namespace) -> int:
         print(json.dumps(statuses, indent=2, sort_keys=True))
         return 0
     for status in statuses:
+        suffix = ""
+        if status["returncode"] is not None:
+            suffix = f" returncode={status['returncode']}"
         print(
             f"{status['label']}: state={status['state']} pid={status['pid']} "
-            f"out={status['outfile_size']}B err={status['errfile_size']}B"
+            f"out={status['outfile_size']}B err={status['errfile_size']}B{suffix}"
         )
     return 0
 
@@ -334,7 +340,7 @@ def command_runner(args: argparse.Namespace) -> int:
         status_file,
         {
             "label": args.label,
-            "state": "completed",
+            "state": "completed" if returncode == 0 else "failed",
             "started_at": read_json(status_file).get("started_at"),
             "finished_at": iso_now(),
             "child_pid": child.pid,

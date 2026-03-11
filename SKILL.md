@@ -11,6 +11,17 @@ The orchestrator owns context, planning, delegation, verification, testing, and 
 
 For multi-worker runs, prefer [scripts/worker_jobs.py](scripts/worker_jobs.py) to create a unique run directory, track worker artifacts, wait safely, and extract outputs. Use raw shell-only orchestration only for simple one-worker cases.
 
+## Execution Checklist
+
+At the start of each orchestration task, write a short checklist or todo list and keep it updated. Keep it operational, not narrative.
+
+- planned worker split and labels
+- launch and extraction steps
+- any promised follow-up reviewer
+- synthesis and final response
+
+Before replying, every checklist item must be completed, deferred, or explicitly cancelled with a reason.
+
 ## Roles
 
 | Role | Purpose | Typical tasks | Hard limits |
@@ -54,7 +65,8 @@ After choosing a role, choose a model from the table above:
 3. For worker roles, prefer a non-orchestrator model that is marked suitable for the role and best matches the task.
 4. For planning or architecture tasks, prefer one senior worker to map the code and another senior worker to critique the synthesized plan when multiple senior tools are available.
 5. For workplan verification, use parallel code-mapping workers only when the codebase splits cleanly. Otherwise prefer one senior investigation and keep the second senior worker for plan review after a first synthesis draft.
-6. If no suitable worker is available, keep the task with the orchestrator rather than forcing delegation.
+6. Do not launch the same tool as a worker from inside itself. Choose another worker model or keep that part local.
+7. If no suitable worker is available, keep the task with the orchestrator rather than forcing delegation.
 
 ## Delegation Discipline
 
@@ -69,13 +81,14 @@ Each new task requires a fresh role selection decision — do not carry forward 
 
 1. **Preflight** — confirm the chosen CLI is installed, authenticated if needed, and allowed by user approval constraints; load user config defaults as a starting point when the model reference requires it
 2. **Plan** — determine what needs doing and which role owns each piece
-3. **Select role and model** — use the role matrix, model table, and any user directive
-4. **Load references** — read [references/templates.md](references/templates.md) and the selected model reference
-5. **Fill template** — include all context; the worker knows nothing else
-6. **Run** — invoke the model using its reference file; for multi-worker runs, prefer [scripts/worker_jobs.py](scripts/worker_jobs.py) so outputs live under one run directory with a manifest
-7. **Keep moving** — while workers run, do narrow local cross-checking, read key files, draft the synthesis skeleton, or prepare a critique prompt; avoid idling, but do not blindly duplicate the full worker task
-8. **Check** — read each worker's final outfile by default when it is short; use section filtering only for long structured outputs; inspect stderr only when the outfile is missing, empty, or clearly malformed; never reuse a differently named old file from another run
-9. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
+3. **Checklist** — write a short execution checklist with worker labels, launch/extract steps, any promised follow-up reviewer, and the final synthesis step
+4. **Select role and model** — use the role matrix, model table, and any user directive
+5. **Load references** — read [references/templates.md](references/templates.md) and the selected model reference
+6. **Fill template** — include all context; the worker knows nothing else
+7. **Run** — invoke the model using its reference file; for multi-worker runs, prefer [scripts/worker_jobs.py](scripts/worker_jobs.py) so outputs live under one run directory with a manifest
+8. **Stay in role** — while workers run, do orchestration-only work such as monitoring status, updating the checklist, preparing the synthesis shell, or drafting a follow-up review prompt. Do not independently re-read or solve the same delegated investigation in parallel.
+9. **Check** — read each worker's final outfile by default when it is short; use section filtering only for long structured outputs; inspect stderr only when the outfile is missing, empty, or clearly malformed; never reuse a differently named old file from another run
+10. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
 
 For tasks that ask to verify a plan or workplan, return a compact step matrix:
 
@@ -92,6 +105,7 @@ End with:
 Before replying:
 
 - Remove duplicated sections
+- If the checklist promised a follow-up worker or reviewer, either run it or say explicitly why it was skipped
 - If a cheap missing file would materially change confidence, inspect it locally or with one targeted read-only follow-up before finalizing
 - Do not mark a step `High` confidence when the blocker says more files or code paths are still needed for full verification
 
