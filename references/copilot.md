@@ -50,6 +50,10 @@ copilot --continue --allow-all-tools
 If extraction returns nothing, check `/tmp/copilot-err.txt` before retrying.
 For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs.py). Let it own stdout/stderr capture, and use its extraction step rather than adding brittle post-processing. It matches `SECTION:` header lines by pattern instead of relying on one exact formatting variant.
 
+Notes:
+
+- Follow the monitoring cadence in `SKILL.md`: let healthy workers run through their role-appropriate wait window, treat empty live captures as normal startup or analysis time, and do not probe or retry an equivalent healthy worker.
+
 ## Key Flags
 
 | Flag | Notes |

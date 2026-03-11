@@ -47,7 +47,8 @@ Notes:
 
 - Do not launch Claude Code as a worker from inside a Claude Code orchestrator session; nested Claude sessions are blocked.
 - Read the whole final outfile by default when it is short; use `worker_jobs.py extract --sections ...` only for long structured outputs.
-- If a worker exits non-zero or produces no usable outfile, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
+- Follow the monitoring cadence in `SKILL.md`: let healthy workers run through their role-appropriate wait window, treat empty live captures as normal startup/analysis time, and do not probe or retry an equivalent healthy worker.
+- If a worker exits non-zero, dies unexpectedly, or completes with no usable output, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
 - While workers run, keep the orchestrator on orchestration work only; do not duplicate the delegated investigation locally.
 
 ## Key Flags

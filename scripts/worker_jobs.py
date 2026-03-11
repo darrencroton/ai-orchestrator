@@ -106,9 +106,16 @@ def worker_status(entry: dict[str, Any]) -> dict[str, Any]:
     status_payload = read_json(status_file) if status_file.exists() else {}
     running = process_running(pid)
     returncode = status_payload.get("returncode")
-    state = "running" if running else status_payload.get("state", "finished")
-    if not running and returncode not in (None, 0):
+    if running:
+        state = "running"
+    elif returncode not in (None, 0):
         state = "failed"
+    elif returncode == 0:
+        state = status_payload.get("state", "completed")
+    elif status_payload.get("state") == "running":
+        state = "stalled"
+    else:
+        state = status_payload.get("state", "finished")
     return {
         "label": entry["label"],
         "pid": pid,
