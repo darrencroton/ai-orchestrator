@@ -18,6 +18,7 @@ The orchestrator delegates the bulk of eligible work to worker models, spending 
 
 ```
 SKILL.md                  # Main skill definition, roles, workflow, model table
+ai-reminder               # tmux reminder helper for Codex/Claude sessions
 references/
   claude.md               # Claude Code CLI reference and commands
   codex.md                # Codex CLI reference and commands
@@ -34,6 +35,16 @@ Trigger conditions:
 - The user mentions `claude`, `codex`, or `copilot` explicitly
 - The user asks to "use another model"
 - The user wants to spread work across multiple models
+
+## Optional Helper
+
+`ai-reminder` is a small companion script for long-running Codex or Claude sessions. The skill itself works without it, but on long coding tasks an orchestrator can drift and stop delegating as consistently as the workflow intends. Running `ai-reminder` alongside the session provides a periodic nudge back toward the current task, plan, and delegation discipline.
+
+Typical usage:
+- `ai-reminder start --tool codex`
+- `ai-reminder start --tool claude --interval 120`
+
+If you use it regularly, add a shell alias so it can be launched from whatever project you are currently working in. Run `ai-reminder --help` for the full command set and option details.
 
 ## Roles
 
