@@ -3,6 +3,7 @@
 Use these templates to define the work by role. Fill in all fields. Remove placeholder text. Include only task-relevant context, but include enough that the worker does not need unstated background.
 
 Templates define prompt shape only. To run a template, choose a model from [SKILL.md](../SKILL.md), then use that model's reference file for the actual CLI invocation.
+Use scanner-safe `SECTION: NAME` markers instead of Markdown headings that begin with `#`. For analysis or investigation, require `path:line` citations for every material claim.
 
 ## Role Ranges
 
@@ -16,12 +17,12 @@ Append to prompt: `"When done, print RESULT: followed by 1-2 sentences of what w
 Extract: `grep -A4 "^RESULT:" /tmp/<tool>-out.txt || tail -10 /tmp/<tool>-out.txt`
 
 **Information tasks** (find, analyse, research):
-Use structured section headers in the prompt (e.g. `## FINDINGS`, `## ALTERNATIVES`).
-Default extract: `sed -n '/^## [Ff]indings/,$p' /tmp/<tool>-out.txt | sed '/^<task_complete>/q'`
-If you requested multiple sections, extract only those sections instead of reading the whole file.
+Use structured section markers in the prompt (e.g. `SECTION: FINDINGS`, `SECTION: RISKS`).
+Default extract: `sed -n '/^SECTION: /,$p' /tmp/<tool>-out.txt`
+If you requested multiple sections, inspect only those markers instead of reading the whole file.
 
-Both patterns always capture output to `/tmp/<tool>-out.txt`. Use redirection or a tool-specific output flag as appropriate.
-Inspect only the requested `RESULT:` block or structured sections, not the raw transcript.
+Both patterns always capture output to a unique per-worker file such as `/tmp/<tool>-<task>-out.txt`. Use redirection or a tool-specific output flag as appropriate.
+Inspect only the requested `RESULT:` block or `SECTION:` markers, not the raw transcript or process logs.
 
 ## Worker Mode
 
@@ -29,6 +30,47 @@ This line is pre-baked at the top of every template below:
 
 ```
 WORKER MODE: Delegated worker only — no ai-orchestrator skill, no re-delegation, complete locally, report blockers.
+```
+
+---
+
+## SENIOR WORKER — Read-Only Investigation
+
+```
+WORKER MODE: Delegated worker only — no ai-orchestrator skill, no re-delegation, complete locally, report blockers.
+
+TASK: <Specific investigation question>
+
+FILES:
+  - </absolute/path/to/file1.ext>
+  - </absolute/path/to/file2.ext>
+
+FOCUS:
+  - <Question or claim to verify>
+  - <Question or claim to verify>
+
+CONTEXT:
+<Minimal task-specific background. Include only details the worker cannot infer from the code.>
+
+CONSTRAINTS:
+  - Read-only analysis
+  - Cite `path:line` for every material claim
+  - If more files are needed, name them in SECTION: OPEN_QUESTIONS instead of guessing
+
+RETURN:
+SECTION: FINDINGS
+<Numbered or bullet list with `path:line` citations>
+
+SECTION: EVIDENCE
+<Claim -> `path:line` support>
+
+SECTION: RISKS
+<Bullets>
+
+SECTION: OPEN_QUESTIONS
+<Bullets>
+
+When done, print RESULT: followed by 1-2 sentences on the main conclusion and any blocker.
 ```
 
 ---
@@ -41,8 +83,8 @@ WORKER MODE: Delegated worker only — no ai-orchestrator skill, no re-delegatio
 TASK: <imperative verb + specific description>
 
 FILES:
-  - <exact/path/to/file1.ext>
-  - <exact/path/to/file2.ext>
+  - </absolute/path/to/file1.ext>
+  - </absolute/path/to/file2.ext>
 
 CONTEXT:
 <Paste relevant code or describe current state. Include function signatures,
@@ -70,10 +112,17 @@ REVIEW THIS PLAN AND FIND PROBLEMS:
 ---
 
 CODEBASE CONTEXT:
-<Relevant file paths, function names, data structures, or constraints.>
+<Relevant absolute file paths, function names, data structures, or constraints.>
 
-RETURN: Numbered list of concerns, risks, missed edge cases, logic errors,
-or better approaches. Do not implement anything. Analysis only.
+RETURN:
+SECTION: CONCERNS
+<Numbered list of concerns, risks, missed edge cases, or logic errors. Cite `path:line` when referencing code.>
+
+SECTION: BETTER_APPROACHES
+<Bullets>
+
+SECTION: OPEN_QUESTIONS
+<Bullets>
 
 When done, print RESULT: followed by 1 sentence on the number and severity of issues found.
 ```
@@ -87,7 +136,7 @@ WORKER MODE: Delegated worker only — no ai-orchestrator skill, no re-delegatio
 
 TASK: <Single specific change — one sentence, imperative>
 
-FILE: <exact/path/to/file.ext>
+FILE: </absolute/path/to/file.ext>
 
 LOCATION: <Function name, class name, or line range>
 
@@ -149,7 +198,7 @@ FIND:
 
 SOURCE PREFERENCE: <official docs / recent articles / GitHub issues / papers>
 
-## FINDINGS
+SECTION: FINDINGS
 <Bullet list only. Include source URLs and dates where relevant. Call out uncertainty.>
 
 IMPORTANT:
@@ -173,8 +222,8 @@ SCOPE:
   - <What to ignore, if relevant>
 
 RETURN:
-## FINDINGS
-<Bullet list only. Include file paths and symbols where relevant. Call out uncertainty.>
+SECTION: FINDINGS
+<Bullet list only. Include file paths, symbols, and `path:line` citations where relevant. Call out uncertainty.>
 
 IMPORTANT:
   - Do not edit any files
@@ -191,5 +240,6 @@ IMPORTANT:
 | Junior worker task touches > 1 file | Escalate to a senior worker |
 | Junior worker task requires understanding > ~100 lines | Escalate to a senior worker |
 | Junior worker research or mapping becomes correctness-critical | Keep it with the orchestrator or escalate to a senior worker |
+| Task asks to verify a workplan or prove parity against code | Use a senior read-only investigation |
 | Git/GitHub action lacks explicit user approval | Do not execute the state-changing action; draft only |
 | Any tool given an ambiguous prompt | Clarify with user before delegating |

@@ -83,8 +83,7 @@ from typing import Any, Iterable
 
 APP_NAME = "ai-reminder"
 DEFAULT_REMINDER_TEXT = (
-    "[ai-reminder] Stay aligned with the current task, plan, and instructions. "
-    "You are the orchestrator. Delegate effectively."
+    "[ai-reminder] Re-check the task, current plan, and delegation before continuing."
 )
 DEFAULT_REMINDER_INTERVAL = 240
 DEFAULT_ACTIVE_WINDOW = 45

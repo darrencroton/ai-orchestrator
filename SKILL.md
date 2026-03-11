@@ -32,13 +32,15 @@ Choose a role first:
 | Task type | Role |
 |---|---|
 | Multi-file edits, refactoring, complex logic | Senior worker |
+| Correctness-sensitive code investigation, parity analysis, migration analysis, ordering analysis | Senior worker |
 | Second opinion / review of the orchestrator's plan | Senior worker (read-only) |
+| Step-by-step plan verification against code | Senior worker (read-only) |
 | Long-running agentic coding tasks | Senior worker |
 | Single-file surgical edit, clear spec | Junior worker |
 | Draft commit / PR / issue text | Junior worker |
 | Execute an explicitly approved git or GitHub action | Junior worker |
 | Low-stakes web research, documentation lookup | Junior worker |
-| "Find where X happens" / execution trace / codebase map | Junior worker |
+| "Find where X happens" / execution trace / codebase map | Junior worker, only when non-critical |
 | Summarise a large codebase or long document | Junior worker, only when the output is non-critical |
 
 ## Model Selection
@@ -48,26 +50,35 @@ After choosing a role, choose a model from the table above:
 1. Follow the user's explicit model preference unless it conflicts with a hard limit or approval rule.
 2. The orchestrator is the current assistant, but only if that model is marked orchestrator-capable.
 3. For worker roles, prefer a non-orchestrator model that is marked suitable for the role and best matches the task.
-4. If no suitable worker is available, keep the task with the orchestrator rather than forcing delegation.
+4. For planning or architecture tasks, prefer one senior worker to map the code and another senior worker to critique the synthesized plan when multiple senior tools are available.
+5. If no suitable worker is available, keep the task with the orchestrator rather than forcing delegation.
 
 ## Delegation Discipline
 
 Every prompt sent to an external tool must be self-contained. Always use the role templates in [references/templates.md](references/templates.md) — do not improvise. They exist to package the right context so delegation can be the default for eligible work. Include: specific task, relevant code or file paths, constraints, approval state for any state-changing git/GitHub action, and expected output format.
 
 Every delegated prompt must also place the receiver in worker mode: it is not the orchestrator, it must not invoke `ai-orchestrator`, and it must not re-delegate to another model. If blocked, it should report the blocker instead of bouncing the task onward.
+Use absolute file paths when practical. For analysis and investigation prompts, require `path:line` evidence for every material claim. Inside shell-quoted prompts, use `SECTION: NAME` markers rather than Markdown headings that start with `#`.
 
 ## Workflow
 
 Each new task requires a fresh role selection decision — do not carry forward a prior delegation choice.
 
-1. **Preflight** — confirm the chosen CLI is installed, authenticated if needed, and allowed by user approval constraints
+1. **Preflight** — confirm the chosen CLI is installed, authenticated if needed, and allowed by user approval constraints; load user config defaults when the model reference requires it
 2. **Plan** — determine what needs doing and which role owns each piece
 3. **Select role and model** — use the role matrix, model table, and any user directive
 4. **Load references** — read [references/templates.md](references/templates.md) and the selected model reference
 5. **Fill template** — include all context; the worker knows nothing else
-6. **Run** — invoke the model using its reference file, with output capture and a bounded timeout when possible
-7. **Check** — review only the extracted result or requested structured sections; if a worker fails, hangs, or returns only startup noise, do at most one targeted retry and then fall back
+6. **Run** — invoke the model using its reference file, with unique per-worker output files; background workers only when there is a clear parallel split; track PIDs and use a bounded wait when possible
+7. **Check** — review only the extracted `RESULT:` block or requested `SECTION:` blocks; if output is missing after process exit, inspect stderr, do at most one targeted retry, and then fall back
 8. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
+
+For tasks that ask to verify a plan or workplan, return a compact step matrix:
+
+- Step
+- Evidence (`path:line`)
+- Confidence
+- Blocker or divergence
 
 ## Orchestrator Summary
 

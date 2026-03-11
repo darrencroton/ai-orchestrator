@@ -30,6 +30,11 @@ references/
 
 This skill is loaded by an AI coding assistant that supports skill files (e.g. Claude Code). Once loaded, the assistant acts as orchestrator and uses the templates and model references to delegate work.
 
+Operating conventions:
+- Use self-contained worker prompts with absolute paths when practical
+- For analysis tasks, ask workers to return `SECTION:` markers plus `path:line` evidence
+- Use unique per-worker capture files and wait on worker pids instead of polling for output-file creation
+
 Trigger conditions:
 - The user wants to delegate a task to an external AI agent
 - The user mentions `claude`, `codex`, or `copilot` explicitly

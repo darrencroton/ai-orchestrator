@@ -28,18 +28,19 @@ All Claude Code output should be redirected and extracted from the capture file.
 # Non-interactive execution (edit task)
 claude -p "PROMPT" --permission-mode acceptEdits --output-format text --add-dir <dir> \
   > /tmp/claude-out.txt 2>/tmp/claude-err.txt
-grep -A4 "^RESULT:" /tmp/claude-out.txt || tail -10 /tmp/claude-out.txt
+grep -A4 "^RESULT:" /tmp/claude-out.txt || sed -n '/^SECTION: /,$p' /tmp/claude-out.txt
 
 # Read-only review / plan review
 claude -p "PROMPT" --permission-mode plan --output-format text --add-dir <dir> \
   > /tmp/claude-out.txt 2>/tmp/claude-err.txt
-grep -A4 "^RESULT:" /tmp/claude-out.txt || tail -10 /tmp/claude-out.txt
+grep -A4 "^RESULT:" /tmp/claude-out.txt || sed -n '/^SECTION: /,$p' /tmp/claude-out.txt
 
 # Resume most recent session in the current directory
 claude --continue
 ```
 
 If extraction returns nothing, check `/tmp/claude-err.txt` before retrying.
+For parallel workers, use unique filenames and wait on each worker pid instead of polling for output-file creation.
 
 ## Key Flags
 
