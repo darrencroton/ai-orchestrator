@@ -44,6 +44,8 @@ Typical usage:
 - `ai-reminder start --tool codex`
 - `ai-reminder start --tool claude --interval 120`
 
+Ensure the script is executable before first use: `chmod +x ai-reminder`.
+
 If you use it regularly, add a shell alias so it can be launched from whatever project you are currently working in. Run `ai-reminder --help` for the full command set and option details.
 
 ## Roles
