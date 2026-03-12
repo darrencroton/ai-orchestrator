@@ -19,6 +19,11 @@ Extract: `python3 <skill-dir>/scripts/worker_jobs.py extract --run-dir "$run_dir
 **Information tasks** (find, analyse, research):
 Use structured section markers in the prompt (e.g. `SECTION: FINDINGS`, `SECTION: RISKS`).
 Default extract: read the whole final outfile. If the output is long, filter on requested `SECTION` blocks.
+When reliable captured structure matters, put the hard format contract inside `RETURN:` next to the requested sections:
+- Start with the first literal `SECTION:` line on line 1
+- Return only the requested sections, in the order shown
+- Do not include preamble, progress updates, or trailing notes outside those sections
+- Write `- none` for empty sections instead of omitting them
 
 Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) so each run gets its own tracked artifacts and extraction flow. Worker labels must use lowercase kebab-case: `<nn>-<tool>-<subtask-slug>[-rN]`.
 Inspect stderr only when the final outfile is missing, empty, or clearly malformed.

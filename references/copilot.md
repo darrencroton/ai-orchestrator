@@ -21,7 +21,14 @@
 
 ## Config Discovery
 
-Read `~/.copilot/config.json` for the user's model (`model` key if present). Never hardcode model names.
+Read `~/.copilot/config.json` for the user's model (`model` key if present), but do not rely on Copilot's implicit default staying stable across CLI versions or sessions.
+Inspect the current model list from the CLI:
+
+```bash
+COLUMNS=300 copilot --help | sed -n '/--model <model>/,/--mouse/p'
+```
+
+For captured worker runs, prefer the latest available `claude-sonnet-X`. If no Sonnet model is available, prefer the latest plain `gpt-X`. Set `--model` explicitly rather than relying on the default.
 
 ## Core Commands
 
@@ -29,13 +36,13 @@ Launch all Copilot worker runs via [../scripts/worker_jobs.py](../scripts/worker
 
 ```bash
 # Non-interactive execution worker command
-copilot -p "PROMPT" --allow-all-tools --autopilot --silent --add-dir <dir>
+copilot --model <model> -p "PROMPT" --allow-all-tools --autopilot --silent --add-dir <dir>
 
 # Low-stakes web research worker command
-copilot -p "PROMPT" --allow-all-tools --allow-all-urls --autopilot --silent --add-dir <dir>
+copilot --model <model> -p "PROMPT" --allow-all-tools --allow-all-urls --autopilot --silent --add-dir <dir>
 
 # GitHub operations worker command (with MCP tools)
-copilot -p "PROMPT" --allow-all-tools --add-github-mcp-toolset all --autopilot --silent --add-dir <dir>
+copilot --model <model> -p "PROMPT" --allow-all-tools --add-github-mcp-toolset all --autopilot --silent --add-dir <dir>
 
 # Resume most recent session
 copilot --continue --allow-all-tools
@@ -47,6 +54,10 @@ If extraction returns nothing, check the matching `<label>-err.txt` file in the 
 Notes:
 
 - Follow the monitoring cadence in `SKILL.md`: let healthy workers run through their role-appropriate wait window, treat empty live captures as normal startup or analysis time, and do not probe or retry an equivalent healthy worker.
+- Model choice materially affects captured-output reliability. In this environment, the latest available `claude-sonnet-X` followed strict section contracts more reliably than the tested GPT alternatives.
+- `--silent` suppresses CLI wrapper noise, not model-authored preambles or progress chatter.
+- For captured runs, prefer a lean `RETURN:` block over a separate `OUTPUT CONTRACT` preamble. Require the first literal `SECTION:` line on line 1, forbid text outside the requested sections, and use `- none` for empty sections.
+- If Copilot exits `0` with chatter-only output or empty stdout, treat that as malformed output rather than success and retry once with a tighter `RETURN:` block before falling back.
 
 ## Key Flags
 
