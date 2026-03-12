@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage tracked multi-worker runs for ai-orchestrator.
+"""Manage tracked worker runs for ai-orchestrator.
 
 This helper keeps worker artifacts in a unique per-run directory, records a
 manifest, and provides status/wait/extract commands that do not rely on shell
@@ -22,6 +22,7 @@ from typing import Any
 
 DEFAULT_ROOT = Path("/private/tmp/ai-orchestrator")
 MANIFEST_NAME = "manifest.json"
+LABEL_RE = re.compile(r"^\d{2}-[a-z0-9]+-[a-z0-9]+(?:-[a-z0-9]+)*(?:-r\d+)?$")
 # Match line-based SECTION headers even when a model prefixes them with Markdown.
 SECTION_RE = re.compile(r"^\s*(?:#+\s*)?SECTION:\s*([A-Za-z0-9_ -]+)\s*$", re.MULTILINE)
 
@@ -63,6 +64,15 @@ def normalize_command(command: list[str]) -> list[str]:
 
 def normalize_section_name(name: str) -> str:
     return re.sub(r"[^A-Z0-9]+", "_", name.upper()).strip("_")
+
+
+def validate_label(label: str) -> None:
+    if LABEL_RE.fullmatch(label):
+        return
+    raise WorkerJobsError(
+        "Worker label must match <nn>-<tool>-<subtask-slug>[-rN] in lowercase kebab-case, "
+        f"for example 01-codex-trace-login or 03-claude-review-plan-r1: {label}"
+    )
 
 
 def manifest_path(run_dir: Path) -> Path:
@@ -188,6 +198,7 @@ def command_start(args: argparse.Namespace) -> int:
     manifest = ensure_manifest(run_dir)
 
     label = args.label
+    validate_label(label)
     if label in manifest["workers"]:
         raise WorkerJobsError(f"Worker label already exists in manifest: {label}")
 
@@ -371,7 +382,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start one tracked worker. The helper owns stdout/stderr capture; do not add shell redirections unless you explicitly wrap the command in /bin/sh -lc.",
     )
     start_parser.add_argument("--run-dir", required=True)
-    start_parser.add_argument("--label", required=True)
+    start_parser.add_argument(
+        "--label",
+        required=True,
+        help="Worker label in the form <nn>-<tool>-<subtask-slug>[-rN], e.g. 01-codex-trace-login.",
+    )
     start_parser.add_argument("command", nargs=argparse.REMAINDER)
     start_parser.set_defaults(func=command_start)
 

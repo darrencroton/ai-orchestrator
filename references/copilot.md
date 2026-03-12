@@ -25,30 +25,24 @@ Read `~/.copilot/config.json` for the user's model (`model` key if present). Nev
 
 ## Core Commands
 
-Prefer `--silent` for captured non-interactive runs. Always redirect and extract or inspect only the requested section:
+Launch all Copilot worker runs via [../scripts/worker_jobs.py](../scripts/worker_jobs.py). The commands below are the worker command payloads to pass after `worker_jobs.py start --label <label> --`. Prefer `--silent` for captured non-interactive runs.
 
 ```bash
-# Non-interactive execution
-copilot -p "PROMPT" --allow-all-tools --autopilot --silent --add-dir <dir> \
-  > /tmp/copilot-out.txt 2>/tmp/copilot-err.txt
-grep -A4 "^RESULT:" /tmp/copilot-out.txt || tail -10 /tmp/copilot-out.txt
+# Non-interactive execution worker command
+copilot -p "PROMPT" --allow-all-tools --autopilot --silent --add-dir <dir>
 
-# Low-stakes web research
-copilot -p "PROMPT" --allow-all-tools --allow-all-urls --autopilot --silent --add-dir <dir> \
-  > /tmp/copilot-out.txt 2>/tmp/copilot-err.txt
-cat /tmp/copilot-out.txt
+# Low-stakes web research worker command
+copilot -p "PROMPT" --allow-all-tools --allow-all-urls --autopilot --silent --add-dir <dir>
 
-# GitHub operations (with MCP tools)
-copilot -p "PROMPT" --allow-all-tools --add-github-mcp-toolset all --autopilot --silent --add-dir <dir> \
-  > /tmp/copilot-out.txt 2>/tmp/copilot-err.txt
-grep -A4 "^RESULT:" /tmp/copilot-out.txt || tail -10 /tmp/copilot-out.txt
+# GitHub operations worker command (with MCP tools)
+copilot -p "PROMPT" --allow-all-tools --add-github-mcp-toolset all --autopilot --silent --add-dir <dir>
 
 # Resume most recent session
 copilot --continue --allow-all-tools
 ```
 
-If extraction returns nothing, check `/tmp/copilot-err.txt` before retrying.
-For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs.py). Let it own stdout/stderr capture, and use its extraction step rather than adding brittle post-processing. It matches `SECTION:` header lines by pattern instead of relying on one exact formatting variant.
+Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py). Let it own stdout/stderr capture, and use its extraction step rather than adding brittle post-processing. It matches `SECTION:` header lines by pattern instead of relying on one exact formatting variant. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `02-copilot-map-config`.
+If extraction returns nothing, check the matching `<label>-err.txt` file in the run directory before retrying.
 
 Notes:
 

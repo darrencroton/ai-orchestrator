@@ -20,7 +20,7 @@ The orchestrator delegates the bulk of eligible work to worker models, spending 
 SKILL.md                  # Main skill definition, roles, workflow, model table
 ai-reminder               # tmux reminder helper for Codex/Claude sessions
 scripts/
-  worker_jobs.py          # tracked multi-worker launcher/status/extract helper
+  worker_jobs.py          # tracked worker launcher/status/extract helper
 references/
   claude.md               # Claude Code CLI reference and commands
   codex.md                # Codex CLI reference and commands
@@ -36,7 +36,8 @@ Operating conventions:
 - Start with a short execution checklist and keep it updated through the run
 - Use self-contained worker prompts with absolute paths when practical
 - For analysis tasks, ask workers to return `SECTION:` markers plus `path:line` evidence
-- For multi-worker runs, prefer `scripts/worker_jobs.py` over ad hoc `/tmp` filenames and shell-local pid variables
+- Use `scripts/worker_jobs.py` for worker launches
+- Use worker labels in lowercase kebab-case: `<nn>-<tool>-<subtask-slug>[-rN]` so files sort cleanly within each run directory
 - Read each worker's final outfile by default when it is short; inspect stderr only for failures or missing output
 - While workers run, stay in the orchestrator role: monitor status, manage the checklist, and prepare synthesis or follow-up review prompts rather than duplicating the delegated investigation
 

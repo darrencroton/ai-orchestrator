@@ -9,7 +9,8 @@ Only the assistant directly handling the user's request may act as the orchestra
 
 The orchestrator owns context, planning, delegation, verification, testing, and final responsibility. It should push the bulk of eligible work to workers and spend its own tokens on plan quality, context packaging, verification, testing, and synthesis. Keep work local only when delegation would materially weaken correctness, lose critical context, slow verification enough to outweigh the token savings, or when prompt construction cost exceeds the task cost itself.
 
-For multi-worker runs, prefer [scripts/worker_jobs.py](scripts/worker_jobs.py) to create a unique run directory, track worker artifacts, wait safely, and extract outputs. Use raw shell-only orchestration only for simple one-worker cases.
+Use [scripts/worker_jobs.py](scripts/worker_jobs.py) to create a unique run directory, track worker artifacts, wait safely, and extract outputs for every worker run.
+When using the helper, worker labels must use lowercase kebab-case in the form `<nn>-<tool>-<subtask-slug>[-rN]` (for example `01-codex-trace-login`). The helper writes `<label>-out.txt`, `<label>-err.txt`, and `<label>-status.json` inside the per-run directory and rejects bad labels before launch.
 
 ## Execution Checklist
 
@@ -85,7 +86,7 @@ Each new task requires a fresh role selection decision — do not carry forward 
 4. **Select role and model** — use the role matrix, model table, and any user directive
 5. **Load references** — read [references/templates.md](references/templates.md) and the selected model reference
 6. **Fill template** — include all context; the worker knows nothing else
-7. **Run** — invoke the model using its reference file; for multi-worker runs, prefer [scripts/worker_jobs.py](scripts/worker_jobs.py) so outputs live under one run directory with a manifest
+7. **Run** — invoke the model using its reference file and [scripts/worker_jobs.py](scripts/worker_jobs.py) so outputs live under one run directory with a manifest
 8. **Monitor** — use a calm cadence. For senior or otherwise complex tasks, do not treat the run as slow before 4 minutes, then re-check every 2 minutes. For simpler tasks, use 2 minutes, then every 1 minute. If the process is still alive and stdout/stderr are empty, treat that as normal startup or analysis time, not as failure.
 9. **Stay in role** — while workers run, do orchestration-only work such as monitoring status, updating the checklist, preparing the synthesis shell, or drafting a follow-up review prompt. Do not independently re-read or solve the same delegated investigation in parallel. A targeted local tie-break read is allowed only after worker outputs are back and there is a real conflict or missing evidence that materially affects the synthesis.
 10. **Check** — read each worker's final outfile by default when it is short; use section filtering only for long structured outputs; inspect stderr only when the outfile is missing, empty, or clearly malformed after completion; never reuse a differently named old file from another run; do not launch probe commands or retries while an equivalent worker is still running normally

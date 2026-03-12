@@ -23,25 +23,21 @@ Read `~/.claude/settings.json` for relevant user defaults if present. If no mode
 
 ## Core Commands
 
-All Claude Code output should be redirected and extracted from the capture file.
+Launch all Claude worker runs via [../scripts/worker_jobs.py](../scripts/worker_jobs.py). The commands below are the worker command payloads to pass after `worker_jobs.py start --label <label> --`.
 
 ```bash
-# Non-interactive execution (edit task)
-claude -p "PROMPT" --permission-mode acceptEdits --output-format text --add-dir <dir> \
-  > /tmp/claude-out.txt 2>/tmp/claude-err.txt
-cat /tmp/claude-out.txt
+# Edit task worker command
+claude -p "PROMPT" --permission-mode acceptEdits --output-format text --add-dir <dir>
 
-# Read-only review / plan review
-claude -p "PROMPT" --permission-mode plan --output-format text --add-dir <dir> \
-  > /tmp/claude-out.txt 2>/tmp/claude-err.txt
-cat /tmp/claude-out.txt
+# Read-only review / plan review worker command
+claude -p "PROMPT" --permission-mode plan --output-format text --add-dir <dir>
 
 # Resume most recent session in the current directory
 claude --continue
 ```
 
-If extraction returns nothing, check `/tmp/claude-err.txt` before retrying.
-For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and robust extraction. When using the helper, let it own stdout/stderr capture and omit extra shell redirections from the worker command.
+Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and robust extraction. Let it own stdout/stderr capture and omit extra shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `01-claude-review-plan`.
+If extraction returns nothing, check the matching `<label>-err.txt` file in the run directory before retrying.
 
 Notes:
 

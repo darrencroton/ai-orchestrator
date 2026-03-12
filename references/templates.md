@@ -14,13 +14,13 @@ Use scanner-safe `SECTION: NAME` markers in prompts. The helper extractor matche
 
 **Confirmation tasks** (make a change, run an operation):
 Append to prompt: `"When done, print RESULT: followed by 1-2 sentences of what was done."`
-Extract: `grep -A4 "^RESULT:" /tmp/<tool>-out.txt || tail -10 /tmp/<tool>-out.txt`
+Extract: `python3 <skill-dir>/scripts/worker_jobs.py extract --run-dir "$run_dir" --label <label>`
 
 **Information tasks** (find, analyse, research):
 Use structured section markers in the prompt (e.g. `SECTION: FINDINGS`, `SECTION: RISKS`).
 Default extract: read the whole final outfile. If the output is long, filter on requested `SECTION` blocks.
 
-For multi-worker runs, prefer [../scripts/worker_jobs.py](../scripts/worker_jobs.py) so each run gets its own tracked artifacts and extraction flow.
+Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) so each run gets its own tracked artifacts and extraction flow. Worker labels must use lowercase kebab-case: `<nn>-<tool>-<subtask-slug>[-rN]`.
 Inspect stderr only when the final outfile is missing, empty, or clearly malformed.
 
 ## Worker Mode
