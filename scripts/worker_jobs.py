@@ -9,12 +9,14 @@ variables surviving across separate shell invocations.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ from typing import Any
 
 DEFAULT_ROOT = Path("/private/tmp/ai-orchestrator")
 MANIFEST_NAME = "manifest.json"
+MANIFEST_LOCK_NAME = ".manifest.lock"
 LABEL_RE = re.compile(r"^\d{2}-[a-z0-9]+-[a-z0-9]+(?:-[a-z0-9]+)*(?:-r\d+)?$")
 # Match line-based SECTION headers even when a model prefixes them with Markdown.
 SECTION_RE = re.compile(r"^\s*(?:#+\s*)?SECTION:\s*([A-Za-z0-9_ -]+)\s*$", re.MULTILINE)
@@ -77,6 +80,25 @@ def validate_label(label: str) -> None:
 
 def manifest_path(run_dir: Path) -> Path:
     return run_dir / MANIFEST_NAME
+
+
+def manifest_lock_path(run_dir: Path) -> Path:
+    return run_dir / MANIFEST_LOCK_NAME
+
+
+@contextmanager
+def hold_manifest_lock(run_dir: Path):
+    lock_path = manifest_lock_path(run_dir)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+") as lock_handle:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        except OSError as exc:
+            raise WorkerJobsError(f"Unable to lock manifest for run directory: {run_dir}") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
 
 
 def load_manifest(run_dir: Path) -> dict[str, Any]:
@@ -195,55 +217,57 @@ def command_init(args: argparse.Namespace) -> int:
 def command_start(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir).expanduser().resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
-    manifest = ensure_manifest(run_dir)
 
     label = args.label
     validate_label(label)
-    if label in manifest["workers"]:
-        raise WorkerJobsError(f"Worker label already exists in manifest: {label}")
 
     command = normalize_command(args.command)
     if not command:
         raise WorkerJobsError("No worker command supplied.")
 
-    outfile = run_dir / f"{label}-out.txt"
-    errfile = run_dir / f"{label}-err.txt"
-    status_file = run_dir / f"{label}-status.json"
-    wrapper_cmd = [
-        sys.executable,
-        str(Path(__file__).resolve()),
-        "_runner",
-        "--label",
-        label,
-        "--status-file",
-        str(status_file),
-        "--stdout",
-        str(outfile),
-        "--stderr",
-        str(errfile),
-        "--",
-        *command,
-    ]
-    process = subprocess.Popen(
-        wrapper_cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        close_fds=True,
-    )
+    with hold_manifest_lock(run_dir):
+        manifest = ensure_manifest(run_dir)
+        if label in manifest["workers"]:
+            raise WorkerJobsError(f"Worker label already exists in manifest: {label}")
 
-    manifest["workers"][label] = {
-        "label": label,
-        "tool": Path(command[0]).name,
-        "pid": process.pid,
-        "command": command,
-        "outfile": str(outfile),
-        "errfile": str(errfile),
-        "status_file": str(status_file),
-        "started_at": iso_now(),
-    }
-    save_manifest(run_dir, manifest)
+        outfile = run_dir / f"{label}-out.txt"
+        errfile = run_dir / f"{label}-err.txt"
+        status_file = run_dir / f"{label}-status.json"
+        wrapper_cmd = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "_runner",
+            "--label",
+            label,
+            "--status-file",
+            str(status_file),
+            "--stdout",
+            str(outfile),
+            "--stderr",
+            str(errfile),
+            "--",
+            *command,
+        ]
+        process = subprocess.Popen(
+            wrapper_cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+
+        manifest["workers"][label] = {
+            "label": label,
+            "tool": Path(command[0]).name,
+            "pid": process.pid,
+            "command": command,
+            "outfile": str(outfile),
+            "errfile": str(errfile),
+            "status_file": str(status_file),
+            "started_at": iso_now(),
+        }
+        save_manifest(run_dir, manifest)
 
     print(
         json.dumps(
