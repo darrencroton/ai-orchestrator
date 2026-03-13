@@ -9,8 +9,8 @@
 ## Best Used For
 
 - Complex edits and refactors
-- Plan review
-- Deep debugging
+- Long-running coding tasks
+- Plan review and deep debugging
 
 ## Avoid Using It For
 
@@ -31,35 +31,39 @@ codex exec "PROMPT" [-m <model>] -c model_reasoning_effort="<effort>" \
   [SANDBOX_FLAG] --skip-git-repo-check -C <dir>
 
 # Code review worker command
-codex exec review -m <model> --skip-git-repo-check
+codex exec -C <dir> review [-m <model>] -c model_reasoning_effort="<effort>" \
+  [SANDBOX_FLAG] --skip-git-repo-check
 
 # Resume most recent session
 codex exec resume --last --skip-git-repo-check
 ```
 
-`--skip-git-repo-check` — always include; allows running outside a git repo.
+`--skip-git-repo-check` — always include; it allows running outside a git repo.
 
-Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py). Let it own stdout/stderr capture and omit `-o` plus shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`.
+## Helper Use
+
+Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and extraction. Let it own stdout/stderr capture and omit `-o` plus shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `01-codex-plan-scan`.
+
+Check health with:
 
 ```bash
-run_dir=$(python3 <skill-dir>/scripts/worker_jobs.py init --prefix auth-bug)
-python3 <skill-dir>/scripts/worker_jobs.py start --run-dir "$run_dir" --label 01-codex-plan-scan -- \
-  codex exec "PROMPT_PLAN_SCAN" -c model_reasoning_effort="high" -s read-only --skip-git-repo-check -C <dir>
-python3 <skill-dir>/scripts/worker_jobs.py start --run-dir "$run_dir" --label 02-codex-review-plan -- \
-  codex exec "PROMPT_PLAN_REVIEW" -c model_reasoning_effort="high" -s read-only --skip-git-repo-check -C <dir>
-python3 <skill-dir>/scripts/worker_jobs.py wait --run-dir "$run_dir"
-python3 <skill-dir>/scripts/worker_jobs.py extract --run-dir "$run_dir" --label 01-codex-plan-scan
+python3 <skill-dir>/scripts/worker_jobs.py activity --run-dir "$run_dir" --label <label>
 ```
 
-Notes:
+If `healthy=yes`, keep waiting on cadence. Use `cancel` to stop a worker cleanly:
+
+```bash
+python3 <skill-dir>/scripts/worker_jobs.py cancel --run-dir "$run_dir" --label <label>
+```
+
+Use `worker_jobs.py extract` when you want the clean final answer. If Codex exits `0` with transcript-style stdout or empty stdout, extraction falls back to the matched Codex session automatically.
+
+## Notes
 
 - Do not launch Codex CLI as a worker from inside a Codex CLI orchestrator session; choose another worker model or keep that part local.
-- Do not infer failure from a missing helper-managed output file before the worker exits.
-- Read the whole final outfile by default when it is short; use `worker_jobs.py extract --sections ...` only for long structured outputs.
-- Follow the monitoring cadence in `SKILL.md`: let healthy workers run through their role-appropriate wait window, treat empty live captures as normal startup/analysis time, and do not probe or retry an equivalent healthy worker.
-- If a worker exits non-zero, dies unexpectedly, or completes with no usable output, inspect the matching `<label>-err.txt` file, retry once with a tighter prompt if appropriate, then fall back.
+- For senior multi-file edit or review tasks, wait for the role-appropriate window, then run `worker_jobs.py activity`. An advancing session timestamp, recent assistant activity, or `healthy=yes` means keep waiting.
+- If extraction is still empty or malformed after completion, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
 - While workers run, keep the orchestrator on orchestration work only; do not duplicate the delegated investigation locally.
-- Prefer foreground execution unless there is a clear parallel split worth the supervision cost.
 
 ## Key Flags
 
@@ -72,12 +76,14 @@ Notes:
 | `-C / --cd` | path | Set working directory |
 | `--add-dir` | path | Add additional writable directory |
 | `--search` | — | Enable live web search |
+| `-o / --output-last-message` | path | Leave unset for helper-managed runs; the helper can recover the final answer from the matched session |
+| `--json` | — | JSONL event stream; leave unset for normal worker runs |
 
 ## Permission Guidance
 
 - **read-only**: analysis, review, plan review
 - **workspace-write** / `--full-auto`: any task that modifies files
-- **danger-full-access**: only if user explicitly requests unrestricted execution
+- **danger-full-access**: only if the user explicitly requests unrestricted execution
 
 Reasoning guidance:
 
@@ -89,4 +95,5 @@ Reasoning guidance:
 ```bash
 codex exec resume --last --skip-git-repo-check
 ```
+
 Offer that exact command if continuation is useful.

@@ -36,15 +36,29 @@ claude -p "PROMPT" --permission-mode plan --output-format text --add-dir <dir>
 claude --continue
 ```
 
-Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and robust extraction. Let it own stdout/stderr capture and omit extra shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `01-claude-review-plan`.
-If extraction returns nothing, check the matching `<label>-err.txt` file in the run directory before retrying.
+## Helper Use
 
-Notes:
+Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and extraction. Let it own stdout/stderr capture and omit extra shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `01-claude-review-plan`.
+
+Check health with:
+
+```bash
+python3 <skill-dir>/scripts/worker_jobs.py activity --run-dir "$run_dir" --label <label>
+```
+
+If `healthy=yes`, keep waiting on cadence. Use `cancel` to stop a worker cleanly:
+
+```bash
+python3 <skill-dir>/scripts/worker_jobs.py cancel --run-dir "$run_dir" --label <label>
+```
+
+Use `worker_jobs.py extract` when you want the clean final answer. If Claude exits `0` with empty stdout, extraction falls back to the matched Claude session automatically.
+
+## Notes
 
 - Do not launch Claude Code as a worker from inside a Claude Code orchestrator session; nested Claude sessions are blocked.
-- Read the whole final outfile by default when it is short; use `worker_jobs.py extract --sections ...` only for long structured outputs.
-- Follow the monitoring cadence in `SKILL.md`: let healthy workers run through their role-appropriate wait window, treat empty live captures as normal startup/analysis time, and do not probe or retry an equivalent healthy worker.
-- If a worker exits non-zero, dies unexpectedly, or completes with no usable output, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
+- For senior multi-file edit or review tasks, wait for the role-appropriate window, then run `worker_jobs.py activity`. An advancing session timestamp, recent assistant activity, or `healthy=yes` means keep waiting.
+- If extraction is still empty or malformed after completion, inspect the matching stderr file, retry once with a tighter prompt if appropriate, then fall back.
 - While workers run, keep the orchestrator on orchestration work only; do not duplicate the delegated investigation locally.
 
 ## Key Flags
@@ -70,4 +84,5 @@ Notes:
 ```bash
 claude --continue
 ```
+
 Offer that exact command if continuation is useful.

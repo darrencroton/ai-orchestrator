@@ -48,16 +48,33 @@ copilot --model <model> -p "PROMPT" --allow-all-tools --add-github-mcp-toolset a
 copilot --continue --allow-all-tools
 ```
 
-Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py). Let it own stdout/stderr capture, and use its extraction step rather than adding brittle post-processing. It matches `SECTION:` header lines by pattern instead of relying on one exact formatting variant. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `02-copilot-map-config`.
-If extraction returns nothing, check the matching `<label>-err.txt` file in the run directory before retrying.
+## Helper Use
 
-Notes:
+Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and extraction. Let it own stdout/stderr capture. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `02-copilot-map-config`.
 
-- Follow the monitoring cadence in `SKILL.md`: let healthy workers run through their role-appropriate wait window, treat empty live captures as normal startup or analysis time, and do not probe or retry an equivalent healthy worker.
+Check health with:
+
+```bash
+python3 <skill-dir>/scripts/worker_jobs.py activity --run-dir "$run_dir" --label <label>
+```
+
+For Copilot, `activity` reports recent helper-managed file activity. If `healthy=yes`, keep waiting on cadence. Use `cancel` to stop a worker cleanly:
+
+```bash
+python3 <skill-dir>/scripts/worker_jobs.py cancel --run-dir "$run_dir" --label <label>
+```
+
+Use `worker_jobs.py extract` when you want the final answer or section filtering.
+
+## Notes
+
+- Keep Copilot in junior-worker scope only. If the task expands beyond that scope, stop and reassign it.
+- For junior-worker tasks, wait for the role-appropriate window, then run `worker_jobs.py activity`. A recent `last_activity_at` or `healthy=yes` means keep waiting.
 - Model choice materially affects captured-output reliability. In this environment, the latest available `claude-sonnet-X` followed strict section contracts more reliably than the tested GPT alternatives.
 - `--silent` suppresses CLI wrapper noise, not model-authored preambles or progress chatter.
 - For captured runs, prefer a lean `RETURN:` block over a separate `OUTPUT CONTRACT` preamble. Require the first literal `SECTION:` line on line 1, forbid text outside the requested sections, and use `- none` for empty sections.
-- If Copilot exits `0` with chatter-only output or empty stdout, treat that as malformed output rather than success and retry once with a tighter `RETURN:` block before falling back.
+- If extraction is still empty or malformed after completion, inspect the matching stderr file, retry once with a tighter `RETURN:` block if appropriate, then fall back.
+- While workers run, keep the orchestrator on orchestration work only; do not duplicate the delegated investigation locally.
 
 ## Key Flags
 

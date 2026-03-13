@@ -20,7 +20,7 @@ The orchestrator delegates the bulk of eligible work to worker models, spending 
 SKILL.md                  # Main skill definition, roles, workflow, model table
 ai-reminder               # tmux reminder helper for Codex/Claude sessions
 scripts/
-  worker_jobs.py          # tracked worker launcher/status/extract helper
+  worker_jobs.py          # tracked worker launcher/status/activity/cancel/extract helper
 references/
   claude.md               # Claude Code CLI reference and commands
   codex.md                # Codex CLI reference and commands
@@ -37,8 +37,11 @@ Operating conventions:
 - Use self-contained worker prompts with absolute paths when practical
 - For analysis tasks, ask workers to return `SECTION:` markers plus `path:line` evidence
 - Use `scripts/worker_jobs.py` for worker launches
+- Use `worker_jobs.py activity` as the worker health check; for session-backed tools it reads lightweight session signals, otherwise it uses helper-managed file activity
+- Use `worker_jobs.py cancel` to stop workers cleanly and preserve final status
+- Use `worker_jobs.py extract` when you want the clean final answer rather than raw wrapper output
 - Use worker labels in lowercase kebab-case: `<nn>-<tool>-<subtask-slug>[-rN]` so files sort cleanly within each run directory
-- Read each worker's final outfile by default when it is short; inspect stderr only for failures or missing output
+- Read each worker's short clean final outfile directly; otherwise use `worker_jobs.py extract` and inspect stderr only for failures or missing output
 - While workers run, stay in the orchestrator role: monitor status, manage the checklist, and prepare synthesis or follow-up review prompts rather than duplicating the delegated investigation
 
 Trigger conditions:
@@ -71,4 +74,6 @@ If you use it regularly, add a shell alias so it can be launched from whatever p
 
 1. Add a new row to the model table in `SKILL.md` (or remove the relevant row)
 2. Add `references/<model>.md` following the structure of the existing model files (or remove the relevant file)
-3. Only update `references/templates.md` if the new model requires a new role, prompt shape, or output-extraction pattern
+3. Update `scripts/worker_jobs.py` if the model needs custom activity, extraction, or session matching behavior
+4. Update `README.md` and `AGENTS.md` if the supported structure or maintenance expectations changed
+5. Only update `references/templates.md` if the new model requires a new role, prompt shape, or output-extraction pattern
