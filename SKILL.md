@@ -10,6 +10,7 @@ Only the assistant directly handling the user's request may act as the orchestra
 The orchestrator owns context, planning, delegation, verification, testing, and final responsibility. It should push the bulk of eligible work to workers and spend its own tokens on plan quality, context packaging, verification, testing, and synthesis. Keep work local only when delegation would materially weaken correctness, lose critical context, slow verification enough to outweigh the token savings, or when prompt construction cost exceeds the task cost itself.
 
 Use [scripts/worker_jobs.py](scripts/worker_jobs.py) to create a unique run directory, track worker artifacts, wait safely, check lightweight worker activity, cancel cleanly, and extract outputs for every worker run.
+The helper keeps transient worker artifacts under a helper-managed OS temp root by default. Override that root only with the `AI_ORCHESTRATOR_ARTIFACT_ROOT` environment variable; do not place transient worker artifacts inside the task repository.
 When using the helper, worker labels must use lowercase kebab-case in the form `<nn>-<tool>-<subtask-slug>[-rN]` (for example `01-codex-trace-login`). The helper writes `<label>-out.txt`, `<label>-err.txt`, and `<label>-status.json` inside the per-run directory and rejects bad labels before launch.
 Use `worker_jobs.py activity --run-dir "$run_dir" --label <label>` as the health check. If it reports `healthy=yes`, keep waiting on cadence.
 

@@ -16,6 +16,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -23,7 +24,8 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_ROOT = Path("/private/tmp/ai-orchestrator")
+ARTIFACT_ROOT_ENV = "AI_ORCHESTRATOR_ARTIFACT_ROOT"
+DEFAULT_ROOT_NAME = "ai-orchestrator"
 MANIFEST_NAME = "manifest.json"
 MANIFEST_LOCK_NAME = ".manifest.lock"
 LABEL_RE = re.compile(r"^\d{2}-[a-z0-9]+-[a-z0-9]+(?:-[a-z0-9]+)*(?:-r\d+)?$")
@@ -35,6 +37,26 @@ CODEX_SESSION_ID_RE = re.compile(r"^session id:\s*([0-9a-f-]+)\s*$", re.MULTILIN
 
 class WorkerJobsError(RuntimeError):
     """Raised for expected operational errors."""
+
+
+def default_root() -> Path:
+    override = os.environ.get(ARTIFACT_ROOT_ENV, "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return (Path(tempfile.gettempdir()) / DEFAULT_ROOT_NAME).resolve()
+
+
+def ensure_managed_run_dir(path: Path) -> Path:
+    managed_root = default_root()
+    resolved = path.expanduser().resolve()
+    try:
+        resolved.relative_to(managed_root)
+    except ValueError as exc:
+        raise WorkerJobsError(
+            f"Run directory must live under helper-managed artifact root {managed_root}. "
+            f"Set {ARTIFACT_ROOT_ENV} to override the root."
+        ) from exc
+    return resolved
 
 
 def iso_now() -> str:
@@ -114,6 +136,22 @@ def option_values(command: list[str], flags: set[str]) -> list[str]:
                 break
         idx += 1 if matched else 1
     return values
+
+
+def remove_options_with_values(command: list[str], flags: set[str]) -> list[str]:
+    cleaned: list[str] = []
+    idx = 0
+    while idx < len(command):
+        arg = command[idx]
+        if arg in flags:
+            idx += 2 if idx + 1 < len(command) else 1
+            continue
+        if any(arg.startswith(f"{flag}=") for flag in flags):
+            idx += 1
+            continue
+        cleaned.append(arg)
+        idx += 1
+    return cleaned
 
 
 def codex_prompt_from_command(command: list[str]) -> str | None:
@@ -386,6 +424,13 @@ def codex_workdir_from_command(command: list[str]) -> Path | None:
         return Path(values[-1]).expanduser().resolve()
     except OSError:
         return None
+
+
+def codex_command_with_output_file(command: list[str], output_path: Path) -> list[str]:
+    if len(command) < 2 or command[1] != "exec":
+        return command
+    rewritten = remove_options_with_values(command, {"-o", "--output-last-message"})
+    return [rewritten[0], rewritten[1], "-o", str(output_path), *rewritten[2:]]
 
 
 def resolve_claude_session_path(entry: dict[str, Any], *, wait_seconds: float = 0.0) -> Path | None:
@@ -873,6 +918,14 @@ def extract_sections(text: str, names: list[str]) -> str:
 def extract_best_text(entry: dict[str, Any]) -> str:
     status_file = Path(entry["status_file"])
     status_payload = read_json(status_file) if status_file.exists() else {}
+    final_output_file = entry.get("final_output_file")
+    if isinstance(final_output_file, str) and final_output_file:
+        final_output_path = Path(final_output_file)
+        if final_output_path.exists() and final_output_path.stat().st_size > 0:
+            final_text = final_output_path.read_text()
+            if final_text.strip():
+                return final_text
+
     outfile = Path(entry["outfile"])
     if outfile.exists() and outfile.stat().st_size > 0:
         out_text = outfile.read_text()
@@ -907,7 +960,14 @@ def extract_best_text(entry: dict[str, Any]) -> str:
 
 
 def command_init(args: argparse.Namespace) -> int:
-    root = Path(args.root).expanduser().resolve()
+    root = default_root()
+    if args.root:
+        requested_root = Path(args.root).expanduser().resolve()
+        if requested_root != root:
+            raise WorkerJobsError(
+                f"Custom --root is no longer supported. Use {ARTIFACT_ROOT_ENV}={requested_root} "
+                "to override the helper-managed artifact root."
+            )
     run_dir = derive_run_dir(root, args.prefix)
     run_dir.mkdir(parents=True, exist_ok=False)
     ensure_manifest(run_dir)
@@ -916,7 +976,7 @@ def command_init(args: argparse.Namespace) -> int:
 
 
 def command_start(args: argparse.Namespace) -> int:
-    run_dir = Path(args.run_dir).expanduser().resolve()
+    run_dir = ensure_managed_run_dir(Path(args.run_dir))
     run_dir.mkdir(parents=True, exist_ok=True)
 
     label = args.label
@@ -925,6 +985,12 @@ def command_start(args: argparse.Namespace) -> int:
     command = normalize_command(args.command)
     if not command:
         raise WorkerJobsError("No worker command supplied.")
+
+    tool_name = infer_tool_name(command)
+    final_output_file: Path | None = None
+    if tool_name == "codex" and len(command) >= 2 and command[1] == "exec":
+        final_output_file = run_dir / f"{label}-last.txt"
+        command = codex_command_with_output_file(command, final_output_file)
 
     with hold_manifest_lock(run_dir):
         manifest = ensure_manifest(run_dir)
@@ -959,7 +1025,6 @@ def command_start(args: argparse.Namespace) -> int:
             close_fds=True,
         )
 
-        tool_name = infer_tool_name(command)
         manifest["workers"][label] = {
             "label": label,
             "tool": tool_name,
@@ -970,6 +1035,8 @@ def command_start(args: argparse.Namespace) -> int:
             "status_file": str(status_file),
             "started_at": started_at,
         }
+        if final_output_file is not None:
+            manifest["workers"][label]["final_output_file"] = str(final_output_file)
         save_manifest(run_dir, manifest)
 
     if tool_name in {"claude", "codex"}:
@@ -990,6 +1057,7 @@ def command_start(args: argparse.Namespace) -> int:
                 "pid": process.pid,
                 "outfile": str(outfile),
                 "errfile": str(errfile),
+                **({"final_output_file": str(final_output_file)} if final_output_file is not None else {}),
                 "status_file": str(status_file),
                 "run_dir": str(run_dir),
             },
@@ -1240,8 +1308,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="worker_jobs.py")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    init_parser = subparsers.add_parser("init", help="Create a unique run directory.")
-    init_parser.add_argument("--root", default=str(DEFAULT_ROOT))
+    init_parser = subparsers.add_parser(
+        "init",
+        help=(
+            "Create a unique run directory under the helper-managed artifact root "
+            f"(override with {ARTIFACT_ROOT_ENV})."
+        ),
+    )
+    init_parser.add_argument("--root", help=argparse.SUPPRESS)
     init_parser.add_argument("--prefix", default="run")
     init_parser.set_defaults(func=command_init)
 
@@ -1249,7 +1323,14 @@ def build_parser() -> argparse.ArgumentParser:
         "start",
         help="Start one tracked worker. The helper owns stdout/stderr capture; do not add shell redirections unless you explicitly wrap the command in /bin/sh -lc.",
     )
-    start_parser.add_argument("--run-dir", required=True)
+    start_parser.add_argument(
+        "--run-dir",
+        required=True,
+        help=(
+            "Per-run directory created by `init`; must live under the helper-managed "
+            f"artifact root (override with {ARTIFACT_ROOT_ENV})."
+        ),
+    )
     start_parser.add_argument(
         "--label",
         required=True,

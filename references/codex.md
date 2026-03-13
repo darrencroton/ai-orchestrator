@@ -42,7 +42,7 @@ codex exec resume --last --skip-git-repo-check
 
 ## Helper Use
 
-Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and extraction. Let it own stdout/stderr capture and omit `-o` plus shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `01-codex-plan-scan`.
+Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and extraction. Let it own stdout/stderr capture plus the helper-managed `-o` final-message path, and omit shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `01-codex-plan-scan`.
 
 Check health with:
 
@@ -56,7 +56,7 @@ If `healthy=yes`, keep waiting on cadence. Use `cancel` to stop a worker cleanly
 python3 <skill-dir>/scripts/worker_jobs.py cancel --run-dir "$run_dir" --label <label>
 ```
 
-Use `worker_jobs.py extract` when you want the clean final answer. If Codex exits `0` with transcript-style stdout or empty stdout, extraction falls back to the matched Codex session automatically.
+Use `worker_jobs.py extract` when you want the clean final answer. The helper first reads the helper-managed Codex last-message file, then falls back to the matched Codex session when needed.
 
 ## Notes
 
@@ -76,7 +76,7 @@ Use `worker_jobs.py extract` when you want the clean final answer. If Codex exit
 | `-C / --cd` | path | Set working directory |
 | `--add-dir` | path | Add additional writable directory |
 | `--search` | — | Enable live web search |
-| `-o / --output-last-message` | path | Leave unset for helper-managed runs; the helper can recover the final answer from the matched session |
+| `-o / --output-last-message` | path | Leave unset in worker commands; the helper injects and manages this path for tracked runs |
 | `--json` | — | JSONL event stream; leave unset for normal worker runs |
 
 ## Permission Guidance

@@ -37,6 +37,7 @@ Operating conventions:
 - Use self-contained worker prompts with absolute paths when practical
 - For analysis tasks, ask workers to return `SECTION:` markers plus `path:line` evidence
 - Use `scripts/worker_jobs.py` for worker launches
+- Let the helper keep transient worker artifacts under its managed OS temp root; override only with `AI_ORCHESTRATOR_ARTIFACT_ROOT`, not by placing worker artifacts in the task repo
 - Use `worker_jobs.py activity` as the worker health check; for session-backed tools it reads lightweight session signals, otherwise it uses helper-managed file activity
 - Use `worker_jobs.py cancel` to stop workers cleanly and preserve final status
 - Use `worker_jobs.py extract` when you want the clean final answer rather than raw wrapper output
