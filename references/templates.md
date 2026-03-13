@@ -13,7 +13,11 @@ Use scanner-safe `SECTION: NAME` markers in prompts. The helper extractor matche
 ## Output Patterns
 
 **Confirmation tasks** (make a change, run an operation):
-Append to prompt: `"When done, print RESULT: followed by 1-2 sentences of what was done."`
+Use a literal `RESULT:` contract:
+- Start line 1 with `RESULT:`
+- Return only the `RESULT:` line or lines
+- Do not include preamble, progress updates, or trailing notes
+- If blocked, write `RESULT: blocked - <reason>`
 
 **Information tasks** (find, analyse, research):
 Use structured section markers in the prompt (e.g. `SECTION: FINDINGS`, `SECTION: RISKS`).
@@ -100,7 +104,8 @@ CONSTRAINTS:
 
 EXPECTED OUTPUT: <What done looks like>
 
-When done, print RESULT: followed by 1-2 sentences of what was done.
+RETURN:
+RESULT: <1-2 sentences of what was done>
 ```
 
 ---
@@ -156,7 +161,8 @@ CONSTRAINTS:
 
 VERIFY: <Test command to run after change, if applicable>
 
-When done, print RESULT: followed by 1 sentence of what was changed.
+RETURN:
+RESULT: <1 sentence of what was changed>
 ```
 
 ---
@@ -184,7 +190,8 @@ APPROVAL GATE:
 If approval is not explicit, stop after preparing the message/body/command summary.
 Do not commit, push, merge, open a PR, or modify remote state.
 
-When done, print RESULT: followed by 1-2 sentences of what was done.
+RETURN:
+RESULT: <1-2 sentences of what was done>
 ```
 
 ---

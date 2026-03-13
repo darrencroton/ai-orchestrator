@@ -52,7 +52,7 @@ If `healthy=yes`, keep waiting on cadence. Use `cancel` to stop a worker cleanly
 python3 <skill-dir>/scripts/worker_jobs.py cancel --run-dir "$run_dir" --label <label>
 ```
 
-Use `worker_jobs.py extract` when you want the clean final answer. If Claude exits `0` with empty stdout, extraction falls back to the matched Claude session automatically.
+Use `worker_jobs.py extract` when you want the clean final answer. Use `worker_jobs.py extract --json` when you need the extracted text plus its source artifact. If Claude exits `0` with empty stdout, extraction falls back to the matched Claude session automatically.
 
 ## Notes
 

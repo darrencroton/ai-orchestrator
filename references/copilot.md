@@ -64,7 +64,7 @@ For Copilot, `activity` reports recent helper-managed file activity. If `healthy
 python3 <skill-dir>/scripts/worker_jobs.py cancel --run-dir "$run_dir" --label <label>
 ```
 
-Use `worker_jobs.py extract` when you want the final answer or section filtering.
+Use `worker_jobs.py extract` when you want the final answer or section filtering. Use `worker_jobs.py extract --json` when you need the extracted text plus its source artifact.
 
 ## Notes
 

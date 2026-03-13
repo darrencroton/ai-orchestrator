@@ -915,7 +915,31 @@ def extract_sections(text: str, names: list[str]) -> str:
     return "\n\n".join(part for part in parts if part).strip() or text
 
 
-def extract_best_text(entry: dict[str, Any]) -> str:
+def helper_activity(entry: dict[str, Any], now: float) -> dict[str, Any]:
+    latest_mtime = None
+    latest_path: Path | None = None
+    for path_key in ("outfile", "errfile", "status_file", "final_output_file"):
+        raw_path = entry.get(path_key)
+        if not isinstance(raw_path, str) or not raw_path:
+            continue
+        path = Path(raw_path)
+        if not path.exists():
+            continue
+        path_mtime = path.stat().st_mtime
+        if latest_mtime is None or path_mtime > latest_mtime:
+            latest_mtime = path_mtime
+            latest_path = path
+    if latest_mtime is None:
+        return {}
+    return {
+        "activity_source": "helper_files",
+        "last_activity_at": datetime.fromtimestamp(latest_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "last_activity_age_s": max(0, int(now - latest_mtime)),
+        "last_activity_path": str(latest_path) if latest_path is not None else None,
+    }
+
+
+def extract_best_result(entry: dict[str, Any]) -> dict[str, str]:
     status_file = Path(entry["status_file"])
     status_payload = read_json(status_file) if status_file.exists() else {}
     final_output_file = entry.get("final_output_file")
@@ -924,7 +948,11 @@ def extract_best_text(entry: dict[str, Any]) -> str:
         if final_output_path.exists() and final_output_path.stat().st_size > 0:
             final_text = final_output_path.read_text()
             if final_text.strip():
-                return final_text
+                return {
+                    "source": "final_output_file",
+                    "source_path": str(final_output_path),
+                    "text": final_text,
+                }
 
     outfile = Path(entry["outfile"])
     if outfile.exists() and outfile.stat().st_size > 0:
@@ -935,28 +963,56 @@ def extract_best_text(entry: dict[str, Any]) -> str:
                 if session_path is not None:
                     session_text = extract_session_text("codex", session_path)
                     if session_text:
-                        return session_text
-            return out_text
+                        return {
+                            "source": "codex_session",
+                            "source_path": str(session_path),
+                            "text": session_text,
+                        }
+            return {
+                "source": "outfile",
+                "source_path": str(outfile),
+                "text": out_text,
+            }
 
     if entry.get("tool") in {"claude", "codex"} and status_payload.get("returncode") == 0:
         session_path = resolve_session_path(entry)
         if session_path is not None:
             session_text = extract_session_text(str(entry.get("tool")), session_path)
             if session_text:
-                return session_text
+                return {
+                    "source": f"{entry.get('tool')}_session",
+                    "source_path": str(session_path),
+                    "text": session_text,
+                }
 
     errfile = Path(entry["errfile"])
     if errfile.exists() and errfile.stat().st_size > 0:
         err_text = errfile.read_text()
         blocks = find_section_blocks(err_text)
         if blocks:
-            return err_text[blocks[-1][1] :].strip()
+            return {
+                "source": "errfile_sections",
+                "source_path": str(errfile),
+                "text": err_text[blocks[-1][1] :].strip(),
+            }
         result_idx = err_text.rfind("RESULT:")
         if result_idx != -1:
-            return err_text[result_idx:].strip()
-        return err_text
+            return {
+                "source": "errfile_result",
+                "source_path": str(errfile),
+                "text": err_text[result_idx:].strip(),
+            }
+        return {
+            "source": "errfile",
+            "source_path": str(errfile),
+            "text": err_text,
+        }
 
     raise WorkerJobsError(f"No output available for worker {entry['label']}")
+
+
+def extract_best_text(entry: dict[str, Any]) -> str:
+    return extract_best_result(entry)["text"]
 
 
 def command_init(args: argparse.Namespace) -> int:
@@ -1116,19 +1172,20 @@ def command_activity(args: argparse.Namespace) -> int:
             if session_path is not None:
                 session_payload = session_activity(str(entry.get("tool")), session_path)
                 payload.update(session_payload)
+                payload["activity_source"] = "session"
                 payload["healthy"] = status["running"] and session_payload.get("session_mtime_age_s", args.max_idle + 1) <= args.max_idle
             else:
-                payload["healthy"] = False
                 payload["session_path"] = None
+                fallback_payload = helper_activity(entry, now)
+                payload.update(fallback_payload)
+                if fallback_payload:
+                    payload["healthy"] = status["running"] and fallback_payload.get("last_activity_age_s", args.max_idle + 1) <= args.max_idle
+                else:
+                    payload["healthy"] = False
         else:
-            latest_mtime = None
-            for path_key in ("outfile", "errfile", "status_file"):
-                path = Path(entry[path_key])
-                if path.exists():
-                    latest_mtime = max(latest_mtime or 0.0, path.stat().st_mtime)
-            if latest_mtime is not None:
-                payload["last_activity_at"] = datetime.fromtimestamp(latest_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                payload["last_activity_age_s"] = max(0, int(now - latest_mtime))
+            fallback_payload = helper_activity(entry, now)
+            payload.update(fallback_payload)
+            if fallback_payload:
                 payload["healthy"] = status["running"] and payload["last_activity_age_s"] <= args.max_idle
             else:
                 payload["healthy"] = False
@@ -1159,6 +1216,8 @@ def command_activity(args: argparse.Namespace) -> int:
             print(f"  last_event={payload['last_event_type']}{suffix} at {payload['last_event_at']}")
         elif payload.get("last_activity_at"):
             print(f"  last_activity_at={payload['last_activity_at']}")
+        if payload.get("activity_source") == "helper_files" and payload.get("last_activity_path"):
+            print(f"  helper_activity={payload['last_activity_path']}")
         if payload.get("session_path"):
             print(f"  session={payload['session_path']}")
     return 0
@@ -1191,11 +1250,26 @@ def command_wait(args: argparse.Namespace) -> int:
 def command_extract(args: argparse.Namespace) -> int:
     manifest = load_manifest(Path(args.run_dir).expanduser().resolve())
     entry = iter_selected_workers(manifest, args.label)[0]
-    text = extract_best_text(entry)
+    result = extract_best_result(entry)
+    text = result["text"]
     if args.sections:
         section_names = [part.strip() for part in args.sections.split(",") if part.strip()]
         if section_names:
             text = extract_sections(text, section_names)
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "label": entry["label"],
+                    "source": result["source"],
+                    "source_path": result["source_path"],
+                    "text": text.rstrip(),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     print(text.rstrip())
     return 0
 
@@ -1367,6 +1441,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--sections",
         help="Comma-separated section names to extract from matching SECTION header lines. If omitted, print the whole final outfile.",
     )
+    extract_parser.add_argument("--json", action="store_true", help="Print the extracted text plus its source metadata as JSON.")
     extract_parser.set_defaults(func=command_extract)
 
     cancel_parser = subparsers.add_parser("cancel", help="Ask tracked workers to stop and wait for status to settle.")

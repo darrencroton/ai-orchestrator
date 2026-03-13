@@ -41,6 +41,7 @@ Operating conventions:
 - Use `worker_jobs.py activity` as the worker health check; for session-backed tools it reads lightweight session signals, otherwise it uses helper-managed file activity
 - Use `worker_jobs.py cancel` to stop workers cleanly and preserve final status
 - Use `worker_jobs.py extract` when you want the clean final answer rather than raw wrapper output
+- Use `worker_jobs.py extract --json` when you need the extracted text plus its source artifact for debugging
 - Use worker labels in lowercase kebab-case: `<nn>-<tool>-<subtask-slug>[-rN]` so files sort cleanly within each run directory
 - Read each worker's short clean final outfile directly; otherwise use `worker_jobs.py extract` and inspect stderr only for failures or missing output
 - While workers run, stay in the orchestrator role: monitor status, manage the checklist, and prepare synthesis or follow-up review prompts rather than duplicating the delegated investigation
