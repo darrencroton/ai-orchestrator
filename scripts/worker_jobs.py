@@ -24,8 +24,12 @@ from typing import Any
 
 
 ARTIFACT_ROOT_ENV = "AI_ORCHESTRATOR_ARTIFACT_ROOT"
+STATE_DIR_NAME = ".ai-orchestrator"
+RUNS_DIR_NAME = "runs"
 MANIFEST_NAME = "manifest.json"
 MANIFEST_LOCK_NAME = ".manifest.lock"
+INDEX_NAME = "index.json"
+INDEX_LOCK_NAME = ".index.lock"
 LABEL_RE = re.compile(r"^\d{2}-[a-z0-9]+-[a-z0-9]+(?:-[a-z0-9]+)*(?:-r\d+)?$")
 # Match line-based SECTION headers even when a model prefixes them with Markdown.
 SECTION_RE = re.compile(r"^\s*(?:#+\s*)?SECTION:\s*([A-Za-z0-9_ -]+)\s*$", re.MULTILINE)
@@ -37,17 +41,61 @@ class WorkerJobsError(RuntimeError):
     """Raised for expected operational errors."""
 
 
-def default_root() -> Path:
+def artifact_root_override() -> Path | None:
     override = os.environ.get(ARTIFACT_ROOT_ENV, "").strip()
     if override:
         return Path(override).expanduser().resolve()
-    return Path(".ai-orchestrator/runs").resolve()
+    return None
+
+
+def existing_state_dir(start: Path | None = None) -> Path | None:
+    base = (start or Path.cwd()).expanduser().resolve()
+    for candidate in (base, *base.parents):
+        state_dir = candidate / STATE_DIR_NAME
+        if state_dir.exists():
+            return state_dir
+    return None
+
+
+def default_state_dir(start: Path | None = None) -> Path:
+    override = artifact_root_override()
+    if override is not None:
+        return override
+    existing = existing_state_dir(start)
+    if existing is not None:
+        return existing
+    return ((start or Path.cwd()).expanduser().resolve() / STATE_DIR_NAME)
+
+
+def default_root(start: Path | None = None) -> Path:
+    override = artifact_root_override()
+    if override is not None:
+        return override
+    return default_state_dir(start) / RUNS_DIR_NAME
+
+
+def state_dir_from_run_dir(path: Path) -> Path | None:
+    resolved = path.expanduser().resolve()
+    override = artifact_root_override()
+    if override is not None:
+        try:
+            resolved.relative_to(override)
+        except ValueError:
+            return None
+        return override
+    for parent in resolved.parents:
+        if parent.name != RUNS_DIR_NAME:
+            continue
+        state_dir = parent.parent
+        if state_dir.name == STATE_DIR_NAME:
+            return state_dir
+    return None
 
 
 def resolve_run_dir(arg: str) -> Path:
     """Resolve --run-dir; 'current' follows the .ai-orchestrator/current symlink."""
     if arg == "current":
-        current_link = default_root().parent / "current"
+        current_link = default_state_dir() / "current"
         if not current_link.exists():
             raise WorkerJobsError("No current run: .ai-orchestrator/current symlink not found.")
         return current_link.resolve()
@@ -55,15 +103,14 @@ def resolve_run_dir(arg: str) -> Path:
 
 
 def ensure_managed_run_dir(path: Path) -> Path:
-    managed_root = default_root()
     resolved = path.expanduser().resolve()
-    try:
-        resolved.relative_to(managed_root)
-    except ValueError as exc:
+    state_dir = state_dir_from_run_dir(resolved)
+    if state_dir is None:
+        managed_root = default_root()
         raise WorkerJobsError(
             f"Run directory must live under helper-managed artifact root {managed_root}. "
             f"Set {ARTIFACT_ROOT_ENV} to override the root."
-        ) from exc
+        )
     return resolved
 
 
@@ -100,7 +147,7 @@ def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
-def write_json(path: Path, payload: dict[str, Any]) -> None:
+def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_suffix(path.suffix + ".tmp")
     temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -821,19 +868,38 @@ def manifest_lock_path(run_dir: Path) -> Path:
     return run_dir / MANIFEST_LOCK_NAME
 
 
+def index_path(state_dir: Path) -> Path:
+    return state_dir / INDEX_NAME
+
+
+def index_lock_path(state_dir: Path) -> Path:
+    return state_dir / INDEX_LOCK_NAME
+
+
 @contextmanager
-def hold_manifest_lock(run_dir: Path):
-    lock_path = manifest_lock_path(run_dir)
+def hold_lock(lock_path: Path, description: str):
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+") as lock_handle:
         try:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
         except OSError as exc:
-            raise WorkerJobsError(f"Unable to lock manifest for run directory: {run_dir}") from exc
+            raise WorkerJobsError(f"Unable to lock {description}: {lock_path.parent}") from exc
         try:
             yield
         finally:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def hold_manifest_lock(run_dir: Path):
+    with hold_lock(manifest_lock_path(run_dir), f"manifest for run directory {run_dir}"):
+        yield
+
+
+@contextmanager
+def hold_index_lock(state_dir: Path):
+    with hold_lock(index_lock_path(state_dir), f"index for state directory {state_dir}"):
+        yield
 
 
 def load_manifest(run_dir: Path) -> dict[str, Any]:
@@ -865,26 +931,45 @@ def derive_run_dir(root: Path, prefix: str) -> Path:
     return root / f"{prefix}-{stamp}-{os.getpid()}"
 
 
+def load_index(state_dir: Path) -> list[dict[str, Any]]:
+    path = index_path(state_dir)
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return []
+    return payload if isinstance(payload, list) else []
+
+
+def save_index(state_dir: Path, index: list[dict[str, Any]]) -> None:
+    write_json(index_path(state_dir), index)
+
+
 def worker_status(entry: dict[str, Any]) -> dict[str, Any]:
     pid = int(entry.get("pid", 0))
     status_file = Path(entry["status_file"])
     outfile = Path(entry["outfile"])
     errfile = Path(entry["errfile"])
     status_payload = read_json(status_file) if status_file.exists() else {}
-    running = process_running(pid)
+    status_state = status_payload.get("state")
+    if status_state in {"completed", "cancelled", "failed"}:
+        running = False
+    else:
+        running = process_running(pid)
     returncode = status_payload.get("returncode")
     if running:
         state = "running"
-    elif status_payload.get("state") == "cancelled":
+    elif status_state == "cancelled":
         state = "cancelled"
     elif returncode not in (None, 0):
         state = "failed"
     elif returncode == 0:
-        state = status_payload.get("state", "completed")
-    elif status_payload.get("state") == "running":
+        state = status_state or "completed"
+    elif status_state == "running":
         state = "stalled"
     else:
-        state = status_payload.get("state", "finished")
+        state = status_state or "finished"
     return {
         "label": entry["label"],
         "pid": pid,
@@ -902,6 +987,37 @@ def worker_status(entry: dict[str, Any]) -> dict[str, Any]:
         "finished_at": status_payload.get("finished_at"),
         "command": entry.get("command", []),
     }
+
+
+def run_status_from_manifest(manifest: dict[str, Any]) -> str:
+    states = {worker_status(entry)["state"] for entry in manifest.get("workers", {}).values()}
+    if not states or states & {"running", "stalled", "finished"}:
+        return "active"
+    if "failed" in states:
+        return "failed"
+    if "cancelled" in states:
+        return "cancelled"
+    return "completed"
+
+
+def sync_run_index(run_dir: Path, *, manifest: dict[str, Any] | None = None, status: str | None = None) -> None:
+    state_dir = state_dir_from_run_dir(run_dir)
+    if state_dir is None:
+        return
+    manifest = manifest if manifest is not None else load_manifest(run_dir)
+    run_status = status or run_status_from_manifest(manifest)
+    created_at = manifest.get("created_at") or iso_now()
+    with hold_index_lock(state_dir):
+        index = load_index(state_dir)
+        for entry in index:
+            if entry.get("run") != run_dir.name:
+                continue
+            entry["created_at"] = entry.get("created_at") or created_at
+            entry["status"] = run_status
+            break
+        else:
+            index.append({"created_at": created_at, "run": run_dir.name, "status": run_status})
+        save_index(state_dir, index)
 
 
 def find_section_blocks(text: str) -> list[tuple[str, int, int]]:
@@ -1034,26 +1150,37 @@ def command_init(args: argparse.Namespace) -> int:
             )
     run_dir = derive_run_dir(root, args.prefix)
     run_dir.mkdir(parents=True, exist_ok=False)
-    ensure_manifest(run_dir)
+    manifest = ensure_manifest(run_dir)
 
-    orch_dir = root.parent
-    current_link = orch_dir / "current"
-    if current_link.is_symlink():
+    state_dir = default_state_dir()
+    current_link = state_dir / "current"
+    if current_link.exists() or current_link.is_symlink():
         current_link.unlink()
-    current_link.symlink_to(Path("runs") / run_dir.name)
+    current_link.symlink_to(run_dir.relative_to(state_dir))
 
-    index_path = orch_dir / "index.json"
-    index: list[dict[str, Any]] = []
-    if index_path.exists():
-        try:
-            index = json.loads(index_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-    index.append({"created_at": iso_now(), "run": run_dir.name, "status": "active"})
-    index_path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
+    sync_run_index(run_dir, manifest=manifest, status="active")
 
     print(run_dir)
     return 0
+
+
+def normalize_dependencies(manifest: dict[str, Any], label: str, depends_on: list[str] | None) -> list[str]:
+    if not depends_on:
+        return []
+    workers = manifest.get("workers", {})
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for dep in depends_on:
+        validate_label(dep)
+        if dep == label:
+            raise WorkerJobsError(f"Worker '{label}' cannot depend on itself.")
+        if dep not in workers:
+            raise WorkerJobsError(f"Unknown dependency label: {dep}")
+        if dep in seen:
+            continue
+        seen.add(dep)
+        normalized.append(dep)
+    return normalized
 
 
 def command_start(args: argparse.Namespace) -> int:
@@ -1077,6 +1204,7 @@ def command_start(args: argparse.Namespace) -> int:
         manifest = ensure_manifest(run_dir)
         if label in manifest["workers"]:
             raise WorkerJobsError(f"Worker label already exists in manifest: {label}")
+        depends_on = normalize_dependencies(manifest, label, args.depends_on)
 
         started_at = iso_now()
         outfile = run_dir / f"{label}-out.txt"
@@ -1118,10 +1246,10 @@ def command_start(args: argparse.Namespace) -> int:
         }
         if final_output_file is not None:
             manifest["workers"][label]["final_output_file"] = str(final_output_file)
-        depends_on = args.depends_on or []
         if depends_on:
             manifest["workers"][label]["depends_on"] = depends_on
         save_manifest(run_dir, manifest)
+        sync_run_index(run_dir, manifest=manifest, status="active")
 
     if tool_name in {"claude", "codex"}:
         session_path = resolve_session_path(manifest["workers"][label], wait_seconds=5.0)
@@ -1162,7 +1290,7 @@ def iter_selected_workers(manifest: dict[str, Any], label: str | None) -> list[d
 
 
 def dependency_warnings(manifest: dict[str, Any], entry: dict[str, Any]) -> list[str]:
-    """Return warning strings for running workers whose dependencies are not yet complete."""
+    """Return warning strings for invalid or incomplete worker dependencies."""
     deps = entry.get("depends_on") or []
     if not deps:
         return []
@@ -1171,6 +1299,9 @@ def dependency_warnings(manifest: dict[str, Any], entry: dict[str, Any]) -> list
     for dep in deps:
         dep_entry = ws.get(dep)
         if dep_entry is None:
+            warnings_list.append(
+                f"worker '{entry['label']}' depends on unknown worker '{dep}'"
+            )
             continue
         dep_state = worker_status(dep_entry)["state"]
         if dep_state not in {"completed", "cancelled", "failed"}:
@@ -1431,6 +1562,7 @@ def command_runner(args: argparse.Namespace) -> int:
             "returncode": returncode,
         },
     )
+    sync_run_index(status_file.parent)
     return returncode
 
 
