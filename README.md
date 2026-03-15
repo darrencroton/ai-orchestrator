@@ -57,6 +57,7 @@ Trigger conditions:
 Typical usage:
 - `ai-reminder start --tool codex`
 - `ai-reminder start --tool claude --interval 120`
+- `ai-reminder start --pane %3 --worker-run-dir /abs/path/to/.ai-orchestrator/runs/<run-id> --reminder-text "[ai-reminder] Workers finished. Verify outputs via worker_jobs.py status/extract and continue orchestration."`
 
 Ensure the script is executable before first use: `chmod +x ai-reminder`.
 

@@ -43,6 +43,8 @@ Monitor options for `start` and `run`:
 - `--poll-interval SECONDS`: delay between monitor loop iterations.
 - `--scan-interval SECONDS`: delay between transcript re-resolution scans.
 - `--state-dir PATH`: override the directory used for pid, status, config, and logs.
+- `--worker-run-dir PATH`: watch a worker run directory and notify once all workers are done.
+- `--worker-labels CSV`: optional comma-separated subset of worker labels to watch.
 - `--debug`: log transcript indexing details.
 
 Interval rule:
@@ -62,6 +64,7 @@ Examples:
 - `ai-reminder start --tool claude --interval 120`
 - `ai-reminder run --pane %3 --interval 90`
 - `ai-reminder status --json`
+- `ai-reminder start --pane %3 --worker-run-dir /path/to/run-dir --reminder-text "[ai-reminder] Workers finished; verify and continue."`
 """
 
 from __future__ import annotations
@@ -133,6 +136,8 @@ class MonitorConfig:
     transcript_root: str
     transcript_path: str | None
     session_id: str | None
+    worker_run_dir: str | None
+    worker_labels: list[str] | None
     state_dir: str
     log_file: str
     started_at: str
@@ -257,8 +262,9 @@ def minimum_interval(active_window: int) -> int:
 def top_level_description() -> str:
     return dedent(
         """\
-        Monitor a Codex or Claude tmux pane and inject reminder text only while recent
-        transcript activity shows the agent is still working.
+        Monitor a Codex or Claude tmux pane and inject reminder text while recent
+        transcript activity shows the agent is still working, or inject once when
+        watched worker jobs finish.
 
         Use `start` for a background monitor, `run` for foreground operation, `status` to
         inspect the current state, and `stop` to terminate a running background monitor.
@@ -288,6 +294,8 @@ def top_level_epilog() -> str:
           --poll-interval SECONDS        Delay between monitor loop iterations.
           --scan-interval SECONDS        Delay between transcript re-resolution scans.
           --state-dir PATH               State directory (default: {default_state_dir()}).
+          --worker-run-dir PATH          Watch a worker_jobs run directory for completion.
+          --worker-labels CSV            Restrict worker watching to specific labels.
           --debug                        Log transcript indexing details.
 
         Environment:
@@ -741,6 +749,77 @@ class TranscriptTail:
         return timestamp if timestamp is not None else time.time()
 
 
+class WorkerRunWatcher:
+    def __init__(self, run_dir: Path, labels: list[str] | None) -> None:
+        self.run_dir = run_dir
+        self.labels = labels
+
+    def summary(self) -> dict[str, Any]:
+        manifest_path = self.run_dir / "manifest.json"
+        if not manifest_path.exists():
+            return {
+                "state": "waiting-for-manifest",
+                "total": 0,
+                "running": 0,
+                "done": 0,
+                "failed": 0,
+                "labels": [],
+            }
+
+        manifest = read_json(manifest_path)
+        workers = manifest.get("workers") or {}
+        if not isinstance(workers, dict):
+            workers = {}
+
+        entries: list[dict[str, Any]] = []
+        for label, entry in sorted(workers.items()):
+            if self.labels and label not in self.labels:
+                continue
+            if isinstance(entry, dict):
+                entries.append(entry)
+
+        if not entries:
+            return {
+                "state": "waiting-for-workers",
+                "total": 0,
+                "running": 0,
+                "done": 0,
+                "failed": 0,
+                "labels": [],
+            }
+
+        running = 0
+        done = 0
+        failed = 0
+        labels: list[str] = []
+        for entry in entries:
+            pid = int(entry.get("pid", 0) or 0)
+            running_now = pid > 0 and process_is_running(pid)
+            status_file = Path(str(entry.get("status_file", "")))
+            status_payload = read_json(status_file) if status_file.exists() else {}
+            returncode = status_payload.get("returncode")
+            state = status_payload.get("state")
+            if running_now:
+                running += 1
+            else:
+                done += 1
+                if isinstance(returncode, int) and returncode != 0:
+                    failed += 1
+                elif state in {"failed", "stalled"}:
+                    failed += 1
+            labels.append(str(entry.get("label", "unknown")))
+
+        overall_state = "workers-running" if running > 0 else "workers-finished"
+        return {
+            "state": overall_state,
+            "total": len(entries),
+            "running": running,
+            "done": done,
+            "failed": failed,
+            "labels": labels,
+        }
+
+
 def send_reminder(pane_id: str, reminder_text: str) -> None:
     run_tmux(["send-keys", "-t", pane_id, "-l", reminder_text])
     run_tmux(["send-keys", "-t", pane_id, "Enter"])
@@ -754,6 +833,7 @@ def build_status(
     last_active: float | None,
     last_reminder: float | None,
     state: str,
+    worker_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     active = last_active is not None and (time.time() - last_active) <= config.active_window
     next_reminder_at = None
@@ -774,6 +854,7 @@ def build_status(
         "state": state,
         "tool": config.tool,
         "transcript_path": str(transcript_path) if transcript_path else None,
+        "worker_summary": worker_summary,
     }
 
 
@@ -791,6 +872,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise MonitorError("--scan-interval must be positive.")
     if not args.reminder_text.strip():
         raise MonitorError("--reminder-text must not be empty.")
+    if args.worker_labels and not args.worker_run_dir:
+        raise MonitorError("--worker-labels requires --worker-run-dir.")
 
 
 def create_config(args: argparse.Namespace) -> MonitorConfig:
@@ -809,6 +892,10 @@ def create_config(args: argparse.Namespace) -> MonitorConfig:
         str(Path(args.transcript).expanduser().resolve()) if args.transcript else None
     )
     log_file = path_to_json(state_dir / "monitor.log")
+    worker_run_dir = str(Path(args.worker_run_dir).expanduser().resolve()) if args.worker_run_dir else None
+    worker_labels: list[str] | None = None
+    if args.worker_labels:
+        worker_labels = [label.strip() for label in args.worker_labels.split(",") if label.strip()]
     return MonitorConfig(
         tool=tool,
         pane_id=pane.pane_id,
@@ -822,6 +909,8 @@ def create_config(args: argparse.Namespace) -> MonitorConfig:
         transcript_root=path_to_json(transcript_root),
         transcript_path=transcript_path,
         session_id=args.session_id,
+        worker_run_dir=worker_run_dir,
+        worker_labels=worker_labels,
         state_dir=path_to_json(state_dir),
         log_file=log_file,
         started_at=isoformat_utc(time.time()) or "",
@@ -862,6 +951,11 @@ def monitor_loop(config: MonitorConfig, *, foreground: bool) -> int:
         echo_logs=foreground,
     )
     tail = TranscriptTail(spec, debug=config.debug, log_path=log_path, echo_logs=foreground)
+    watcher = (
+        WorkerRunWatcher(Path(config.worker_run_dir), config.worker_labels)
+        if config.worker_run_dir
+        else None
+    )
 
     append_log(log_path, f"Monitor started for {config.tool} in pane {config.pane_target}.", echo=foreground)
 
@@ -869,6 +963,8 @@ def monitor_loop(config: MonitorConfig, *, foreground: bool) -> int:
     last_reminder = time.time()
     last_scan = 0.0
     current_transcript: Path | None = None
+    worker_summary: dict[str, Any] | None = None
+    completion_sent = False
     last_state = "starting"
 
     try:
@@ -879,32 +975,47 @@ def monitor_loop(config: MonitorConfig, *, foreground: bool) -> int:
                 break
 
             process_commands, children = load_process_tree()
-            if config.tool not in pane_tools(pane, process_commands, children):
-                last_state = "tool-exited"
-                break
+            tool_present = config.tool in pane_tools(pane, process_commands, children)
 
             now = time.time()
-            if current_transcript is None or (now - last_scan) >= config.scan_interval:
-                current_transcript = resolver.resolve()
-                tail.bind(current_transcript)
-                last_scan = now
-
-            observed_activity = tail.read_activity()
-            if observed_activity is not None:
-                last_active = observed_activity
-
-            active = last_active is not None and (now - last_active) <= config.active_window
-            if current_transcript is None:
-                last_state = "waiting-for-transcript"
-            elif not active:
-                last_state = "idle"
-            elif (now - last_reminder) < config.reminder_interval:
-                last_state = "cooldown"
+            if watcher is not None:
+                worker_summary = watcher.summary()
+                if worker_summary["state"] == "workers-finished":
+                    if not completion_sent:
+                        send_reminder(config.pane_id, config.reminder_text)
+                        last_reminder = now
+                        completion_sent = True
+                        last_state = "workers-finished-reminder-sent"
+                        append_log(log_path, f"Worker completion reminder injected into pane {config.pane_id}.", echo=foreground)
+                    else:
+                        last_state = "workers-finished"
+                else:
+                    last_state = worker_summary["state"]
             else:
-                send_reminder(config.pane_id, config.reminder_text)
-                last_reminder = now
-                last_state = "reminder-sent"
-                append_log(log_path, f"Reminder injected into pane {config.pane_id}.", echo=foreground)
+                if not tool_present:
+                    last_state = "tool-exited"
+                    break
+                if current_transcript is None or (now - last_scan) >= config.scan_interval:
+                    current_transcript = resolver.resolve()
+                    tail.bind(current_transcript)
+                    last_scan = now
+
+                observed_activity = tail.read_activity()
+                if observed_activity is not None:
+                    last_active = observed_activity
+
+                active = last_active is not None and (now - last_active) <= config.active_window
+                if current_transcript is None:
+                    last_state = "waiting-for-transcript"
+                elif not active:
+                    last_state = "idle"
+                elif (now - last_reminder) < config.reminder_interval:
+                    last_state = "cooldown"
+                else:
+                    send_reminder(config.pane_id, config.reminder_text)
+                    last_reminder = now
+                    last_state = "reminder-sent"
+                    append_log(log_path, f"Reminder injected into pane {config.pane_id}.", echo=foreground)
 
             write_json(
                 status_path,
@@ -915,6 +1026,7 @@ def monitor_loop(config: MonitorConfig, *, foreground: bool) -> int:
                     last_active=last_active,
                     last_reminder=last_reminder,
                     state=last_state,
+                    worker_summary=worker_summary,
                 ),
             )
             time.sleep(config.poll_interval)
@@ -935,6 +1047,7 @@ def monitor_loop(config: MonitorConfig, *, foreground: bool) -> int:
                 "state": last_state,
                 "tool": config.tool,
                 "transcript_path": str(current_transcript) if current_transcript else None,
+                "worker_summary": worker_summary,
             },
         )
         append_log(log_path, f"Monitor stopped with state {last_state}.", echo=foreground)
@@ -1140,6 +1253,14 @@ def add_common_monitor_args(parser: argparse.ArgumentParser) -> None:
         "--state-dir",
         default=str(default_state_dir()),
         help=f"Directory used for the pid, status, config, and log files. Default: {default_state_dir()}.",
+    )
+    parser.add_argument(
+        "--worker-run-dir",
+        help="Watch this worker_jobs.py run directory and inject one reminder when watched workers finish.",
+    )
+    parser.add_argument(
+        "--worker-labels",
+        help="Comma-separated worker labels to watch within --worker-run-dir. Defaults to all workers.",
     )
     parser.add_argument("--debug", action="store_true", help="Log transcript indexing details.")
 
