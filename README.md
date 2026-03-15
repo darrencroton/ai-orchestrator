@@ -56,6 +56,8 @@ Trigger conditions:
 
 `ai-reminder` is a small companion script for long-running Codex or Claude sessions. The skill itself works without it, but on long coding tasks an orchestrator can drift and stop delegating as consistently as the workflow intends. Running `ai-reminder` alongside the session provides a periodic nudge back toward the current task, plan, and delegation discipline.
 
+NOTE: The orchestrator must be running inside a tmux pane for `ai-reminder` to work.
+
 Typical usage:
 - `ai-reminder start --tool codex`
 - `ai-reminder start --tool claude --interval 120`
