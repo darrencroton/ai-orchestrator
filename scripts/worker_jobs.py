@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Manage tracked worker runs for ai-orchestrator.
 
-This helper keeps worker artifacts in a unique per-run directory, records a
-manifest, and provides status/wait/extract commands that do not rely on shell
-variables surviving across separate shell invocations.
+Worker artifacts are written to .ai-orchestrator/runs/ in the current project
+by default (override with AI_ORCHESTRATOR_ARTIFACT_ROOT). Provides per-run
+directories, manifest tracking, status, activity, cancel, and extract commands.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import re
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -25,7 +24,6 @@ from typing import Any
 
 
 ARTIFACT_ROOT_ENV = "AI_ORCHESTRATOR_ARTIFACT_ROOT"
-DEFAULT_ROOT_NAME = "ai-orchestrator"
 MANIFEST_NAME = "manifest.json"
 MANIFEST_LOCK_NAME = ".manifest.lock"
 LABEL_RE = re.compile(r"^\d{2}-[a-z0-9]+-[a-z0-9]+(?:-[a-z0-9]+)*(?:-r\d+)?$")
@@ -43,7 +41,17 @@ def default_root() -> Path:
     override = os.environ.get(ARTIFACT_ROOT_ENV, "").strip()
     if override:
         return Path(override).expanduser().resolve()
-    return (Path(tempfile.gettempdir()) / DEFAULT_ROOT_NAME).resolve()
+    return Path(".ai-orchestrator/runs").resolve()
+
+
+def resolve_run_dir(arg: str) -> Path:
+    """Resolve --run-dir; 'current' follows the .ai-orchestrator/current symlink."""
+    if arg == "current":
+        current_link = default_root().parent / "current"
+        if not current_link.exists():
+            raise WorkerJobsError("No current run: .ai-orchestrator/current symlink not found.")
+        return current_link.resolve()
+    return Path(arg).expanduser().resolve()
 
 
 def ensure_managed_run_dir(path: Path) -> Path:
@@ -1027,12 +1035,29 @@ def command_init(args: argparse.Namespace) -> int:
     run_dir = derive_run_dir(root, args.prefix)
     run_dir.mkdir(parents=True, exist_ok=False)
     ensure_manifest(run_dir)
+
+    orch_dir = root.parent
+    current_link = orch_dir / "current"
+    if current_link.is_symlink():
+        current_link.unlink()
+    current_link.symlink_to(Path("runs") / run_dir.name)
+
+    index_path = orch_dir / "index.json"
+    index: list[dict[str, Any]] = []
+    if index_path.exists():
+        try:
+            index = json.loads(index_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    index.append({"created_at": iso_now(), "run": run_dir.name, "status": "active"})
+    index_path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
+
     print(run_dir)
     return 0
 
 
 def command_start(args: argparse.Namespace) -> int:
-    run_dir = ensure_managed_run_dir(Path(args.run_dir))
+    run_dir = ensure_managed_run_dir(resolve_run_dir(args.run_dir))
     run_dir.mkdir(parents=True, exist_ok=True)
 
     label = args.label
@@ -1093,6 +1118,9 @@ def command_start(args: argparse.Namespace) -> int:
         }
         if final_output_file is not None:
             manifest["workers"][label]["final_output_file"] = str(final_output_file)
+        depends_on = args.depends_on or []
+        if depends_on:
+            manifest["workers"][label]["depends_on"] = depends_on
         save_manifest(run_dir, manifest)
 
     if tool_name in {"claude", "codex"}:
@@ -1133,9 +1161,33 @@ def iter_selected_workers(manifest: dict[str, Any], label: str | None) -> list[d
     return [workers[label]]
 
 
+def dependency_warnings(manifest: dict[str, Any], entry: dict[str, Any]) -> list[str]:
+    """Return warning strings for running workers whose dependencies are not yet complete."""
+    deps = entry.get("depends_on") or []
+    if not deps:
+        return []
+    ws = manifest.get("workers", {})
+    warnings_list = []
+    for dep in deps:
+        dep_entry = ws.get(dep)
+        if dep_entry is None:
+            continue
+        dep_state = worker_status(dep_entry)["state"]
+        if dep_state not in {"completed", "cancelled", "failed"}:
+            warnings_list.append(
+                f"worker '{entry['label']}' depends on '{dep}' which is {dep_state}"
+            )
+    return warnings_list
+
+
 def command_status(args: argparse.Namespace) -> int:
-    manifest = load_manifest(Path(args.run_dir).expanduser().resolve())
-    statuses = [worker_status(entry) for entry in iter_selected_workers(manifest, args.label)]
+    run_dir = resolve_run_dir(args.run_dir)
+    manifest = load_manifest(run_dir)
+    entries = iter_selected_workers(manifest, args.label)
+    statuses = [worker_status(entry) for entry in entries]
+    for entry in entries:
+        for warn in dependency_warnings(manifest, entry):
+            print(f"WARNING: {warn}", file=sys.stderr)
     if args.json:
         print(json.dumps(statuses, indent=2, sort_keys=True))
         return 0
@@ -1151,8 +1203,12 @@ def command_status(args: argparse.Namespace) -> int:
 
 
 def command_activity(args: argparse.Namespace) -> int:
-    manifest = load_manifest(Path(args.run_dir).expanduser().resolve())
+    run_dir = resolve_run_dir(args.run_dir)
+    manifest = load_manifest(run_dir)
     entries = iter_selected_workers(manifest, args.label)
+    for entry in entries:
+        for warn in dependency_warnings(manifest, entry):
+            print(f"WARNING: {warn}", file=sys.stderr)
     now = time.time()
     activity_rows: list[dict[str, Any]] = []
 
@@ -1224,7 +1280,7 @@ def command_activity(args: argparse.Namespace) -> int:
 
 
 def command_wait(args: argparse.Namespace) -> int:
-    run_dir = Path(args.run_dir).expanduser().resolve()
+    run_dir = resolve_run_dir(args.run_dir)
     deadline = None if args.timeout is None else time.time() + args.timeout
     while True:
         manifest = load_manifest(run_dir)
@@ -1248,7 +1304,7 @@ def command_wait(args: argparse.Namespace) -> int:
 
 
 def command_extract(args: argparse.Namespace) -> int:
-    manifest = load_manifest(Path(args.run_dir).expanduser().resolve())
+    manifest = load_manifest(resolve_run_dir(args.run_dir))
     entry = iter_selected_workers(manifest, args.label)[0]
     result = extract_best_result(entry)
     text = result["text"]
@@ -1275,7 +1331,7 @@ def command_extract(args: argparse.Namespace) -> int:
 
 
 def command_cancel(args: argparse.Namespace) -> int:
-    run_dir = Path(args.run_dir).expanduser().resolve()
+    run_dir = resolve_run_dir(args.run_dir)
     manifest = load_manifest(run_dir)
     entries = iter_selected_workers(manifest, args.label)
 
@@ -1409,6 +1465,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--label",
         required=True,
         help="Worker label in the form <nn>-<tool>-<subtask-slug>[-rN], e.g. 01-codex-trace-login.",
+    )
+    start_parser.add_argument(
+        "--depends-on",
+        nargs="*",
+        metavar="LABEL",
+        help="Worker labels that must complete before this one (stored in manifest; checked by status/activity).",
     )
     start_parser.add_argument("command", nargs=argparse.REMAINDER)
     start_parser.set_defaults(func=command_start)

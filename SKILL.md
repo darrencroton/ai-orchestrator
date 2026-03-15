@@ -10,7 +10,7 @@ Only the assistant directly handling the user's request may act as the orchestra
 The orchestrator owns context, planning, delegation, verification, testing, and final responsibility. It should push the bulk of eligible work to workers and spend its own tokens on plan quality, context packaging, verification, testing, and synthesis. Keep work local only when delegation would materially weaken correctness, lose critical context, slow verification enough to outweigh the token savings, or when prompt construction cost exceeds the task cost itself.
 
 Use [scripts/worker_jobs.py](scripts/worker_jobs.py) to create a unique run directory, track worker artifacts, wait safely, check lightweight worker activity, cancel cleanly, and extract outputs for every worker run.
-The helper keeps transient worker artifacts under a helper-managed OS temp root by default. Override that root only with the `AI_ORCHESTRATOR_ARTIFACT_ROOT` environment variable; do not place transient worker artifacts inside the task repository.
+The helper writes worker artifacts to `.ai-orchestrator/runs/` in the current project by default. Override with `AI_ORCHESTRATOR_ARTIFACT_ROOT`. Use `--run-dir current` to reference the latest run without knowing the timestamped path.
 When using the helper, worker labels must use lowercase kebab-case in the form `<nn>-<tool>-<subtask-slug>[-rN]` (for example `01-codex-trace-login`). The helper writes `<label>-out.txt`, `<label>-err.txt`, and `<label>-status.json` inside the per-run directory and rejects bad labels before launch.
 Use `worker_jobs.py activity --run-dir "$run_dir" --label <label>` as the health check. If it reports `healthy=yes`, keep waiting on cadence.
 
@@ -76,6 +76,7 @@ After choosing a role, choose a model from the table above:
 Every prompt sent to an external tool must be self-contained. Always use the role templates in [references/templates.md](references/templates.md) — do not improvise. They exist to package the right context so delegation can be the default for eligible work. Include: specific task, relevant code or file paths, constraints, approval state for any state-changing git/GitHub action, and expected output format.
 
 Every delegated prompt must also place the receiver in worker mode: it is not the orchestrator, it must not invoke `ai-orchestrator`, and it must not re-delegate to another model. If blocked, it should report the blocker instead of bouncing the task onward.
+If two workers must edit overlapping files, serialise them or refactor the scope split — do not run them in parallel.
 Use absolute file paths when practical. For analysis and investigation prompts, require `path:line` evidence for every material claim. Inside shell-quoted prompts, use `SECTION: NAME` markers rather than Markdown headings that start with `#`. Keep worker outputs compact and high-signal.
 
 ## Workflow
@@ -91,8 +92,9 @@ Each new task requires a fresh role selection decision — do not carry forward 
 7. **Run** — invoke the model using its reference file and [scripts/worker_jobs.py](scripts/worker_jobs.py) so outputs live under one run directory with a manifest
 8. **Monitor** — use a calm cadence. For senior or otherwise complex tasks, wait 5 minutes, then run `worker_jobs.py activity --run-dir "$run_dir" --label <label>` and re-check every 3 minutes while it stays `healthy=yes`. Very complex tasks may legitimately run for 15+ minutes. For simpler tasks, wait 3 minutes, then re-check every 2 minutes. Do not infer failure from empty stdout/stderr alone while `activity` is still healthy.
 9. **Stay in role** — while workers run, do orchestration-only work such as monitoring status, updating the checklist, preparing the synthesis shell, or drafting a follow-up review prompt. Do not independently re-read or solve the same delegated investigation in parallel. A targeted local tie-break read is allowed only after worker outputs are back and there is a real conflict or missing evidence that materially affects the synthesis.
-10. **Check** — use `worker_jobs.py extract` when you need the clean final answer or section filtering; use `worker_jobs.py extract --json` when you need to see which artifact provided the extracted text. Inspect stderr only when extraction is still empty or clearly malformed after completion; never reuse a differently named old file from another run; do not launch probe commands or retries while an equivalent worker is still running normally
-11. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
+10. **Compress** — after completing a worker batch, summarise completed work in two to three lines and drop the raw worker output from active context to keep the session lean
+11. **Check** — use `worker_jobs.py extract` when you need the clean final answer or section filtering; use `worker_jobs.py extract --json` when you need to see which artifact provided the extracted text. Inspect stderr only when extraction is still empty or clearly malformed after completion; never reuse a differently named old file from another run; do not launch probe commands or retries while an equivalent worker is still running normally
+12. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
 
 When a worker needs to stop, use `worker_jobs.py cancel --run-dir "$run_dir" --label <label>` so the helper records the final cancelled state cleanly.
 
