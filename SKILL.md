@@ -7,7 +7,7 @@ description: Routes coding and analysis tasks to external AI CLI tools (e.g. Cla
 
 Only the assistant directly handling the user's request may act as the orchestrator and use this skill for delegation. Delegated workers are never orchestrators. If the current assistant is not marked as orchestrator-capable in the model table below, it must not orchestrate with this skill.
 
-The orchestrator owns context, planning, delegation, verification, testing, and final responsibility. It should push the bulk of eligible work to workers and spend its own tokens on plan quality, context packaging, verification, testing, and synthesis. Keep work local only when delegation would materially weaken correctness, lose critical context, slow verification enough to outweigh the token savings, or when prompt construction cost exceeds the task cost itself.
+The orchestrator owns context, planning, delegation, verification, testing, and final responsibility. It should push the bulk of eligible work to workers and spend its own tokens on plan quality, context packaging, verification, testing, synthesis, and finalization. The orchestrator is the finisher: workers produce inputs, evidence, drafts, and implementation, but the orchestrator must retain the final user-facing deliverable, the accept-or-reject decision, and correctness-critical judgment. Keep work local only when delegation would materially weaken correctness, lose critical context, slow verification enough to outweigh the token savings, or when prompt construction cost exceeds the task cost itself.
 
 Use [scripts/worker_jobs.py](scripts/worker_jobs.py) to create a unique run directory, track worker artifacts, wait safely, check lightweight worker activity, cancel cleanly, and extract outputs for every worker run.
 The helper writes worker artifacts to `.ai-orchestrator/runs/` in the current project by default. Override with `AI_ORCHESTRATOR_ARTIFACT_ROOT`. Use `--run-dir current` to reference the latest run without knowing the timestamped path.
@@ -29,9 +29,9 @@ Before replying, every checklist item must be completed, deferred, or explicitly
 
 | Role | Purpose | Typical tasks | Hard limits |
 |---|---|---|---|
-| **Orchestrator** | Human-facing controller | Planning, context packaging, verification, testing, final synthesis | Only the assistant directly handling the user may do this |
-| **Senior worker** | Deep technical worker | Multi-file edits, refactors, complex logic, plan review | Self-contained prompt only; no re-delegation; if unavailable, keep the task local |
-| **Junior worker** | Tactical worker | Surgical edits, approved git/GitHub operations, low-stakes web research, codebase mapping, non-critical summarising | Escalate when scope, context depth, or importance grows; never own correctness-critical decisions |
+| **Orchestrator** | Human-facing owner and finisher | Planning, context packaging, verification, testing, final synthesis, final answer/report/recommendation | Only the assistant directly handling the user may do this; must retain the final user-facing deliverable, the acceptance decision, and correctness-critical judgment |
+| **Senior worker** | Deep technical worker | Multi-file edits, refactors, complex logic, plan review, implementation drafts, evidence gathering | Self-contained prompt only; no re-delegation; outputs are inputs or drafts for orchestrator review, not the final deliverable; if unavailable, keep the task local |
+| **Junior worker** | Tactical worker | Surgical edits, approved git/GitHub operations, low-stakes web research, codebase mapping, non-critical summarising, support-text drafts | Escalate when scope, context depth, or importance grows; never own correctness-critical decisions; outputs are inputs or drafts for orchestrator review, not the final deliverable |
 
 ## Available Models
 
@@ -53,7 +53,7 @@ Choose a role first:
 | Step-by-step plan verification against code | Senior worker (read-only) |
 | Long-running agentic coding tasks | Senior worker |
 | Single-file surgical edit, clear spec | Junior worker |
-| Draft commit / PR / issue text | Junior worker |
+| Draft supporting text for orchestrator review | Junior worker |
 | Execute an explicitly approved git or GitHub action | Junior worker |
 | Low-stakes web research, documentation lookup | Junior worker |
 | "Find where X happens" / execution trace / codebase map | Junior worker, only when non-critical |

@@ -42,7 +42,7 @@ codex exec resume --last --skip-git-repo-check
 
 ## Helper Use
 
-Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and extraction. Let it own stdout/stderr capture plus the helper-managed `-o` final-message path, and omit shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `01-codex-plan-scan`.
+Use [../scripts/worker_jobs.py](../scripts/worker_jobs.py) for per-run directories, status tracking, and extraction. Let it own stdout/stderr capture, and omit shell redirections from the worker command. Worker labels must use `<nn>-<tool>-<subtask-slug>[-rN]`, for example `01-codex-plan-scan`.
 
 Check health with:
 
@@ -56,7 +56,7 @@ If `healthy=yes`, keep waiting on cadence. Use `cancel` to stop a worker cleanly
 python3 <skill-dir>/scripts/worker_jobs.py cancel --run-dir "$run_dir" --label <label>
 ```
 
-Use `worker_jobs.py extract` when you want the clean final answer. Use `worker_jobs.py extract --json` when you need the extracted text plus its source artifact. The helper first reads the helper-managed Codex last-message file, then falls back to the matched Codex session when needed.
+Use `worker_jobs.py extract` when you want the clean final answer. Use `worker_jobs.py extract --json` when you need the extracted text plus its source artifact. The helper first reads stdout when it contains the clean answer and falls back to the matched Codex session when needed.
 
 ## Notes
 
@@ -76,7 +76,7 @@ Use `worker_jobs.py extract` when you want the clean final answer. Use `worker_j
 | `-C / --cd` | path | Set working directory |
 | `--add-dir` | path | Add additional writable directory |
 | `--search` | — | Enable live web search |
-| `-o / --output-last-message` | path | Leave unset in worker commands; the helper injects and manages this path for tracked runs |
+| `-o / --output-last-message` | path | Optional Codex flag for standalone use; normally leave unset in tracked worker commands |
 | `--json` | — | JSONL event stream; leave unset for normal worker runs |
 
 ## Permission Guidance

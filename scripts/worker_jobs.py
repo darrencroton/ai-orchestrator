@@ -193,22 +193,6 @@ def option_values(command: list[str], flags: set[str]) -> list[str]:
     return values
 
 
-def remove_options_with_values(command: list[str], flags: set[str]) -> list[str]:
-    cleaned: list[str] = []
-    idx = 0
-    while idx < len(command):
-        arg = command[idx]
-        if arg in flags:
-            idx += 2 if idx + 1 < len(command) else 1
-            continue
-        if any(arg.startswith(f"{flag}=") for flag in flags):
-            idx += 1
-            continue
-        cleaned.append(arg)
-        idx += 1
-    return cleaned
-
-
 def codex_prompt_from_command(command: list[str]) -> str | None:
     if len(command) < 2 or command[1] != "exec":
         return None
@@ -479,13 +463,6 @@ def codex_workdir_from_command(command: list[str]) -> Path | None:
         return Path(values[-1]).expanduser().resolve()
     except OSError:
         return None
-
-
-def codex_command_with_output_file(command: list[str], output_path: Path) -> list[str]:
-    if len(command) < 2 or command[1] != "exec":
-        return command
-    rewritten = remove_options_with_values(command, {"-o", "--output-last-message"})
-    return [rewritten[0], rewritten[1], "-o", str(output_path), *rewritten[2:]]
 
 
 def resolve_claude_session_path(entry: dict[str, Any], *, wait_seconds: float = 0.0) -> Path | None:
@@ -1042,7 +1019,7 @@ def extract_sections(text: str, names: list[str]) -> str:
 def helper_activity(entry: dict[str, Any], now: float) -> dict[str, Any]:
     latest_mtime = None
     latest_path: Path | None = None
-    for path_key in ("outfile", "errfile", "status_file", "final_output_file"):
+    for path_key in ("outfile", "errfile", "status_file"):
         raw_path = entry.get(path_key)
         if not isinstance(raw_path, str) or not raw_path:
             continue
@@ -1066,18 +1043,6 @@ def helper_activity(entry: dict[str, Any], now: float) -> dict[str, Any]:
 def extract_best_result(entry: dict[str, Any]) -> dict[str, str]:
     status_file = Path(entry["status_file"])
     status_payload = read_json(status_file) if status_file.exists() else {}
-    final_output_file = entry.get("final_output_file")
-    if isinstance(final_output_file, str) and final_output_file:
-        final_output_path = Path(final_output_file)
-        if final_output_path.exists() and final_output_path.stat().st_size > 0:
-            final_text = final_output_path.read_text()
-            if final_text.strip():
-                return {
-                    "source": "final_output_file",
-                    "source_path": str(final_output_path),
-                    "text": final_text,
-                }
-
     outfile = Path(entry["outfile"])
     if outfile.exists() and outfile.stat().st_size > 0:
         out_text = outfile.read_text()
@@ -1195,10 +1160,6 @@ def command_start(args: argparse.Namespace) -> int:
         raise WorkerJobsError("No worker command supplied.")
 
     tool_name = infer_tool_name(command)
-    final_output_file: Path | None = None
-    if tool_name == "codex" and len(command) >= 2 and command[1] == "exec":
-        final_output_file = run_dir / f"{label}-last.txt"
-        command = codex_command_with_output_file(command, final_output_file)
 
     with hold_manifest_lock(run_dir):
         manifest = ensure_manifest(run_dir)
@@ -1244,8 +1205,6 @@ def command_start(args: argparse.Namespace) -> int:
             "status_file": str(status_file),
             "started_at": started_at,
         }
-        if final_output_file is not None:
-            manifest["workers"][label]["final_output_file"] = str(final_output_file)
         if depends_on:
             manifest["workers"][label]["depends_on"] = depends_on
         save_manifest(run_dir, manifest)
@@ -1269,7 +1228,6 @@ def command_start(args: argparse.Namespace) -> int:
                 "pid": process.pid,
                 "outfile": str(outfile),
                 "errfile": str(errfile),
-                **({"final_output_file": str(final_output_file)} if final_output_file is not None else {}),
                 "status_file": str(status_file),
                 "run_dir": str(run_dir),
             },

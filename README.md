@@ -1,10 +1,10 @@
 # AI Orchestrator
 
-A skill for AI coding assistants (Claude Code, Codex CLI, GitHub Copilot CLI) that turns the current assistant into an **orchestrator** — routing coding and analysis work to external AI CLI tools while retaining ownership of planning, quality, and final synthesis.
+A skill for AI coding assistants (Claude Code, Codex CLI, GitHub Copilot CLI) that turns the current assistant into an **orchestrator** — routing coding and analysis work to external AI CLI tools while retaining ownership of planning, quality, final synthesis, and final delivery.
 
 ## Purpose
 
-The orchestrator delegates the bulk of eligible work to worker models, spending its own tokens on plan quality, context packaging, verification, and synthesis rather than execution. This distributes load across models, reduces context pressure on the orchestrator, and lets each tool do what it does best.
+The orchestrator delegates the bulk of eligible work to worker models, spending its own tokens on plan quality, context packaging, verification, synthesis, and finalization rather than execution. Workers produce inputs, evidence, drafts, and implementation; the orchestrator remains the finisher and must retain the final user-facing deliverable, the accept-or-reject decision, and correctness-critical judgment. This distributes load across models, reduces context pressure on the orchestrator, and lets each tool do what it does best.
 
 ## Supported Tools
 
@@ -40,10 +40,9 @@ Operating conventions:
 - Use `--run-dir current` to reference the latest run without knowing the timestamped path
 - Use `worker_jobs.py activity` as the worker health check; for session-backed tools it reads lightweight session signals, otherwise it uses helper-managed file activity
 - Use `worker_jobs.py cancel` to stop workers cleanly and preserve final status
-- Use `worker_jobs.py extract` when you want the clean final answer rather than raw wrapper output
+- Use `worker_jobs.py extract` to read each worker's clean final output rather than raw wrapper output; inspect raw stdout or stderr only for failures, malformed extraction, or debugging
 - Use `worker_jobs.py extract --json` when you need the extracted text plus its source artifact for debugging
 - Use worker labels in lowercase kebab-case: `<nn>-<tool>-<subtask-slug>[-rN]` so files sort cleanly within each run directory
-- Read each worker's short clean final outfile directly; otherwise use `worker_jobs.py extract` and inspect stderr only for failures or missing output
 - While workers run, stay in the orchestrator role: monitor status, manage the checklist, and prepare synthesis or follow-up review prompts rather than duplicating the delegated investigation
 
 Trigger conditions:
@@ -68,11 +67,11 @@ If you use it regularly, add a shell alias so it can be launched from whatever p
 
 ## Roles
 
-| Role | Purpose | Hard limits |
-|---|---|---|
-| **Orchestrator** | Human-facing controller: planning, delegation, verification, synthesis | Only the assistant directly handling the user |
-| **Senior worker** | Deep technical work: multi-file edits, refactors, complex logic, plan review | No re-delegation |
-| **Junior worker** | Tactical work: surgical edits, approved git ops, low-stakes research | Escalate when scope or importance grows |
+| Role | Purpose | Typical tasks | Hard limits |
+|---|---|---|---|
+| **Orchestrator** | Human-facing owner and finisher | Planning, delegation, context packaging, verification, testing, final synthesis, final answer/report/recommendation | Only the assistant directly handling the user; must retain the final user-facing deliverable, the acceptance decision, and correctness-critical judgment |
+| **Senior worker** | Deep technical work | Multi-file edits, refactors, complex logic, plan review, implementation drafts, evidence gathering | No re-delegation; outputs are inputs or drafts for orchestrator review, not the final deliverable |
+| **Junior worker** | Tactical work | Surgical edits, approved git ops, low-stakes research, codebase mapping, support-text drafts | Escalate when scope or importance grows; outputs are inputs or drafts for orchestrator review, not the final deliverable |
 
 ## Adding (Removing) a Model
 
