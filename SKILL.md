@@ -21,6 +21,7 @@ At the start of each orchestration task, write a short checklist or todo list an
 - planned worker split and labels
 - launch and extraction steps
 - any promised follow-up reviewer
+- synthesis rubric for judgment-heavy outputs
 - synthesis and final response
 
 Before replying, every checklist item must be completed, deferred, or explicitly cancelled with a reason.
@@ -48,7 +49,7 @@ Choose a role first:
 | Task type | Role |
 |---|---|
 | Multi-file edits, refactoring, complex logic | Senior worker |
-| Correctness-sensitive code investigation, parity analysis, migration analysis, ordering analysis | Senior worker |
+| Correctness-sensitive code investigation, parity analysis, migration analysis, ordering analysis | Senior worker only; do not downgrade for speed |
 | Second opinion / review of the orchestrator's plan | Senior worker (read-only) |
 | Step-by-step plan verification against code | Senior worker (read-only) |
 | Long-running agentic coding tasks | Senior worker |
@@ -74,6 +75,7 @@ After choosing a role, choose a model from the table above:
 ## Delegation Discipline
 
 Every prompt sent to an external tool must be self-contained. Always use the role templates in [references/templates.md](references/templates.md) — do not improvise. They exist to package the right context so delegation can be the default for eligible work. Include: specific task, relevant code or file paths, constraints, approval state for any state-changing git/GitHub action, and expected output format.
+For correctness-critical investigations, explicitly name the evidence scope the worker must check before concluding: the files, directories, docs, configs, schemas, or artifacts that materially affect the answer.
 
 Every delegated prompt must also place the receiver in worker mode: it is not the orchestrator, it must not invoke `ai-orchestrator`, and it must not re-delegate to another model. If blocked, it should report the blocker instead of bouncing the task onward.
 If two workers must edit overlapping files, serialise them or refactor the scope split — do not run them in parallel.
@@ -95,6 +97,7 @@ Each new task requires a fresh role selection decision — do not carry forward 
 10. **Compress** — after completing a worker batch, summarise completed work in two to three lines and drop the raw worker output from active context to keep the session lean
 11. **Check** — use `worker_jobs.py extract` when you need the clean final answer or section filtering; use `worker_jobs.py extract --json` when you need to see which artifact provided the extracted text. Inspect stderr only when extraction is still empty or clearly malformed after completion; never reuse a differently named old file from another run; do not launch probe commands or retries while an equivalent worker is still running normally
 12. **Test** (when appropriate) — the orchestrator runs tests via shell, interprets failures, and delegates follow-up fixes only when that helps quality
+13. **Set the synthesis rubric** — before any final output that makes recommendations or other judgment calls, write down the two or three criteria or rules you will apply and use them consistently in the synthesis
 
 When a worker needs to stop, use `worker_jobs.py cancel --run-dir "$run_dir" --label <label>` so the helper records the final cancelled state cleanly.
 
@@ -114,6 +117,7 @@ Before replying:
 
 - Remove duplicated sections
 - If the checklist promised a follow-up worker or reviewer, either run it or say explicitly why it was skipped
+- If the output is judgment-heavy, confirm the synthesis used the stated rubric rather than ad hoc reasoning
 - If a cheap missing file would materially change confidence, inspect it locally or with one targeted read-only follow-up before finalizing
 - Do not mark a step `High` confidence when the blocker says more files or code paths are still needed for full verification
 

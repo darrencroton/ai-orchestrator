@@ -5,6 +5,7 @@ Use these templates to define the work by role. Fill in all fields. Remove place
 Templates define prompt shape only. To run a template, choose a model from [SKILL.md](../SKILL.md), then use that model's reference file for the actual CLI invocation.
 Always pass `--add-dir` with the tightest directory scope that covers the task — not the repo root — to prevent workers reading outside their intended scope.
 Use scanner-safe `SECTION: NAME` markers in prompts. The helper extractor matches `SECTION:` header lines by pattern, so minor Markdown formatting differences in model output do not matter. For analysis or investigation, require `path:line` citations for every material claim. Keep outputs concise; prefer bullets and short tables over long prose dumps.
+For correctness-critical investigations, explicitly name the required evidence scope in the prompt: the files, directories, docs, configs, schemas, or artifacts the worker must check before concluding.
 
 ## Role Ranges
 
@@ -49,6 +50,9 @@ FILES:
   - </absolute/path/to/file1.ext>
   - </absolute/path/to/file2.ext>
 
+REQUIRED COVERAGE:
+  - <Files, directories, docs, configs, or artifacts that must be checked before concluding>
+
 FOCUS:
   - <Question or claim to verify>
   - <Question or claim to verify>
@@ -60,6 +64,7 @@ CONSTRAINTS:
   - Read-only analysis
   - Cite `path:line` for every material claim
   - Keep the output compact; include only material findings
+  - If any required coverage item was not checked, say so explicitly
   - If more files are needed, name them in SECTION: OPEN_QUESTIONS instead of guessing
 
 RETURN:
@@ -90,6 +95,9 @@ TASK: <imperative verb + specific description>
 FILES:
   - </absolute/path/to/file1.ext>
   - </absolute/path/to/file2.ext>
+
+REQUIRED COVERAGE:
+  - <Files, configs, conventions, or artifacts that must be checked before editing>
 
 CONTEXT:
 <Paste relevant code or describe current state. Include function signatures,
